@@ -41,7 +41,7 @@ print_list(list x) {
         for (p = x; p.ptr != NULL; p = *p.ptr, c++) {
                 printf("%d: ", c);
                 print_element(p.elem);
-                printf(" ");
+                printf(", ");
         }
         printf("%d: ", c);
         print_element(p.elem);
@@ -98,6 +98,7 @@ delete(list *x) {
         if (x->elem.isbranch) {
                 delete(x->elem.ptr);
         }
+        delete(x->ptr);
         free(x); // don't delete content pointed by x->ptr
 }
 
