@@ -5,7 +5,7 @@
   (if (or (number? s) (= (class s) clojure.lang.Symbol))
     s
     (if (seq? s)
-      (if (<= (count s) 3) ;TODO inefficiency: need to go through list everytime
+      (if (<= (count s) 3)
         (reverse (map norm s))
         (let [[op a b & more] s]
           (norm (conj more `(~op ~a ~b) op))))
