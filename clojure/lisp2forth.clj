@@ -14,3 +14,17 @@
 (defn to-forth [s]
   (flatten (norm s)))
 
+;; take the current stack, and reduce it with the next symbol
+(defn forth-reducer [stack next-symbol]
+  (if (contains? #{'+ '- '* '/} next-symbol)
+    (let [stack'    (pop  stack)
+          arg1      (peek stack)
+          arg2      (peek stack')
+          unchanged (pop  stack')]
+      (conj unchanged (eval `(~next-symbol ~arg1 ~arg2))))
+    (conj stack next-symbol)))
+
+;;return result of a forth calculation expression
+(defn forth-calculator [s]
+  (let [init-stack ()]
+    (reduce forth-reducer init-stack s)))
