@@ -32,7 +32,7 @@
     (peek (reduce forth-reducer init-stack s))))
 
 (defn myrand [upper]
-  (+ (rand-int (dec upper)) 1)) ;plus 1 to avoid divid-by-zero
+  (+ (rand-int (dec upper)) 1)) ;plus 1 to avoid divide-by-zero
 
 (defn gen-test-op []
   (let [opvec ['+ '- '* '/]
