@@ -31,15 +31,18 @@
   (let [init-stack ()]
     (peek (reduce forth-reducer init-stack s))))
 
+(defn myrand [upper]
+  (+ (rand-int (dec upper)) 1)) ;plus 1 to avoid divid-by-zero
+
 (defn gen-test-op []
   (let [opvec ['+ '- '* '/]
         n     (count opvec)]
-    (nth opvec (rand-int n))))
+    (nth opvec (myrand n))))
 
 (defn gen-test-cell [max]
   (assert (>= max 2))
   (if (= max 2)
-    `(~(gen-test-op) ~(rand-int 1000) ~(rand-int 1000))
+    `(~(gen-test-op) ~(myrand 100) ~(myrand 100))
     (loop [c     max
            built `(~(gen-test-op))]
       (if (= c 0)
@@ -47,9 +50,9 @@
         (recur (- c 1) (conj built (gen-test-cell (- max 1))))))))
 
 (defn gen-test []
-  (let [case    (gen-test-cell 4) ;Note: 4 here is large enough
-        clojure (eval case)
-        forth   (forth-calculator (to-forth case))]
+  (let [acase   (gen-test-cell 4) ;Note: 4 here is large enough
+        clojure (eval acase)
+        forth   (forth-calculator (to-forth acase))]
     (println clojure "; clojure result")
     (println forth "; forth result")
     (= clojure forth)))
