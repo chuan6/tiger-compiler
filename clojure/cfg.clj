@@ -8,7 +8,7 @@
   {:terminal #{\+ \* \( \) 'id} ;TODO decide if add empty-string here
    :start 'expr
    :production
-   {'expr        [['term 'expr-helper]] ;first as production for the start symbol
+   {'expr        [['term 'expr-helper]]
     'expr-helper [[\+ 'term 'expr-helper]   empty-string]
     'term        [['factor 'term-helper]]
     'term-helper [[\* 'factor 'term-helper] empty-string]
@@ -73,9 +73,9 @@
   (let [ps (:production grammar)]
     (not (nil? (get ps x)))))
 
-(defn add-to-follow-set [data nt new]
-  (assoc data nt (set/union (get data nt)
-                            (disj new empty-string))))
+(defn add-to-follow-set [s nt new]
+  (assoc s nt (set/union (get s nt)
+                         (disj new empty-string))))
 
 (defn iterate-til-fixed [f x]
   (let [x' (f x)]
@@ -99,9 +99,15 @@
                 curr-set (add-to-follow-set (:set data) x x-next)]
               (if (or (empty? x-next) (contains? x-next empty-string))
                 (recur xs
+                       ;; add rule "FOLLOW(left) is a subset of FOLLOW(x)"
+                       ;; to (:infer data). ff chains all the rules found,
+                       ;; and will produce a final rule which is to be
+                       ;; applied to iterate-til-fixed function.
                        {:set curr-set :infer (ff (:infer data) left x)})
                 (recur xs
-                       {:set curr-set :infer (:infer data)}))))))))
+                       (assoc data :set curr-set))))
+          ;;TODO :else
+          )))))
 
 (defn follow-set [grammar]
   (let [prods (seq (:production grammar))]
