@@ -14,6 +14,15 @@
     'term-helper [[\* 'factor 'term-helper] empty-string]
     'factor      [[\( 'expr \)] ['id]]}})
 
+(def sample-cal
+  {:terminal #{\+ \- \* \/ \( \) 'num 'ident}
+   :start 'goal
+   :production
+   {'goal [['expr]]
+    'expr [['expr \+ 'term] ['expr \- 'term] ['term]]
+    'term [['term \* 'factor] ['term \/ 'factor] ['factor]]
+    'factor [[\( 'expr \)] ['num] ['ident]]}})
+
 (defn terminal? [grammar x]
   (if (= x empty-string)
     true
