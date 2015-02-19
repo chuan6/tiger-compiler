@@ -68,7 +68,7 @@
              t []
              consecutive-backslash-count 0]
         (if (or (empty? s) (empty? (rest s)))
-          (do (println "String" (str/join t) "doesn't have closing double-quote.")
+          (do (println "String" (str/join t) "misses closing double-quote.")
               (assoc curr :char-seq nil)) ;the problematic token is not recorded
           (let [c    (first s)
                 peek (second s) ;c and peek are non-nil
@@ -79,6 +79,48 @@
                :token-seq (conj token-seq
                                 {:token 'string :value (str/join (conj t c))})}
               (recur (rest s) (conj t c) cbc))))))))
+
+;;Note: as defined, comment supports nesting.
+(defn comment-recognizer [curr]
+  (let [s (:char-seq curr)]
+    (assert (and (= (first s) \/) (= (second s) \*)))
+    (let [nest-handler (fn [f s]
+                         (loop [s (rest (rest s))
+                                t [\/ \*]]
+                           (if (or (empty? s) (empty? (rest s)))
+                             (do (println "Incomplete comment nesting.")
+                                 (if (empty? s)
+                                   [t s]
+                                   [(conj t (first s)) (rest s)]))
+                             (let [c   (first s)
+                                   suc (second s)]
+                               (cond
+                                 (and (= c \/) (= suc \*)) ;nesting comment
+                                 (let [[t1 s] (f s)]
+                                   (recur s (concat t t1)))
+
+                                 (and (= c \*) (= suc \/)) ;end
+                                 [(-> t (conj \*) (conj \/))
+                                  (rest (rest s))]
+
+                                 :else (recur (rest s) (conj t c)))))))]
+      (loop [s (rest (rest s))
+             t []]
+        (if (or (empty? s) (empty? (rest s)))
+          (do (println "Comment" (str/join t) "misses closing */.")
+              (assoc curr :char-seq nil))
+          (let [c   (first s)
+                suc (second s)] ;c ans suc are non-nil
+            (cond
+              (and (= c \/) (= suc \*)) ;nesting comment
+              (let [[t1 s] (nest-handler nest-handler s)]
+                (recur s (vec (concat t t1)))) ;note: concat return lazy seq instead of vector
+
+              (and (= c \*) (= suc \/)) ;end
+              {:char-seq (rest (rest s))
+               :token-seq (conj (:token-seq curr) {:token 'comment :value (str/join t)})}
+
+              :else (recur (rest s) (conj t c)))))))))
 
 (defn tokenize [in]
   )
