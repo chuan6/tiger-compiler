@@ -47,15 +47,21 @@
     (search kwords s)))
 
 (defn id-recognizer [curr]
-  (assert (Character/isLetter (first (:rest curr))))
-  (loop [t [(first (:rest curr))]
-         s (rest (:rest curr))]
-    (let [c (first s)]
-      (if (Character/isLetterOrDigit c)
-        (recur (conj t c) (rest s))
-        {:char-seq s
-         :token-seq (conj (:token-seq curr)
-                          {:token 'id :name (str/join t)})}))))
+  (let [s (:char-seq curr)
+        c (first s)]
+    (assert (Character/isLetter c))
+    (loop [s (rest s)
+           t [c]]
+      (let [c (first s)]
+        (if (and c (or (Character/isLetterOrDigit c) (= c \_)))
+          (recur (rest s) (conj t c))
+          (let [token (str/join t)
+                kword (keyword-recognizer token)]
+            (if kword
+              {:char-seq s :token-seq (conj (:token-seq curr)
+                                            {:token kword})}
+              {:char-seq s :token-seq (conj (:token-seq curr)
+                                            {:token 'id :name token})})))))))
 
 (defn string-recognizer [curr]
   (assert (= (first (:char-seq curr)) \"))
@@ -69,7 +75,7 @@
              consecutive-backslash-count 0]
         (if (or (empty? s) (empty? (rest s)))
           (do (println "String" (str/join t) "misses closing double-quote.")
-              (assoc curr :char-seq nil)) ;the problematic token is not recorded
+              (assoc curr :char-seq ())) ;the problematic token is not recorded
           (let [c    (first s)
                 peek (second s) ;c and peek are non-nil
                 cbc  (if (= c \\) (inc consecutive-backslash-count)
@@ -91,7 +97,7 @@
         (do (println "Comment"
                      (str/join (if (empty? s) t (conj t (first s))))
                      "misses closing.")
-            (assoc curr :char-seq nil)) ;the problematic token is not recorded
+            (assoc curr :char-seq ())) ;the problematic token is not recorded
         (let [c   (first s)
               suc (second s)]
           (cond (and (= c \*) (= suc \/))
