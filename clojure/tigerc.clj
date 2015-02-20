@@ -84,43 +84,33 @@
 (defn comment-recognizer [curr]
   (let [s (:char-seq curr)]
     (assert (and (= (first s) \/) (= (second s) \*)))
-    (let [nest-handler (fn [f s]
-                         (loop [s (rest (rest s))
-                                t [\/ \*]]
-                           (if (or (empty? s) (empty? (rest s)))
-                             (do (println "Incomplete comment nesting.")
-                                 (if (empty? s)
-                                   [t s]
-                                   [(conj t (first s)) (rest s)]))
-                             (let [c   (first s)
-                                   suc (second s)]
-                               (cond
-                                 (and (= c \/) (= suc \*)) ;nesting comment
-                                 (let [[t1 s] (f s)]
-                                   (recur s (concat t t1)))
+    (loop [s (rest (rest s))
+           t []
+           flag-count 1] ;the number of comment opennings to be closed
+      (if (or (empty? s) (empty? (rest s)))
+        (do (println "Comment"
+                     (str/join (if (empty? s) t (conj t (first s))))
+                     "misses closing.")
+            (assoc curr :char-seq nil)) ;the problematic token is not recorded
+        (let [c   (first s)
+              suc (second s)]
+          (cond (and (= c \*) (= suc \/))
+                (let [flag-count (dec flag-count)]
+                  (if (= flag-count 0)
+                    {:char-seq (rest (rest s))
+                     :token-seq (conj (:token-seq curr)
+                                      {:token 'comment :value (str/join t)})}
+                    (recur (rest (rest s)) ;note pattern */*
+                           (-> t (conj c) (conj suc))
+                           flag-count)))
 
-                                 (and (= c \*) (= suc \/)) ;end
-                                 [(-> t (conj \*) (conj \/))
-                                  (rest (rest s))]
+                (and (= c \/) (= suc \*))
+                (let [flag-count (inc flag-count)]
+                  (recur (rest (rest s)) ;note pattern /*/
+                         (-> t (conj c) (conj suc))
+                         flag-count))
 
-                                 :else (recur (rest s) (conj t c)))))))]
-      (loop [s (rest (rest s))
-             t []]
-        (if (or (empty? s) (empty? (rest s)))
-          (do (println "Comment" (str/join t) "misses closing */.")
-              (assoc curr :char-seq nil))
-          (let [c   (first s)
-                suc (second s)] ;c ans suc are non-nil
-            (cond
-              (and (= c \/) (= suc \*)) ;nesting comment
-              (let [[t1 s] (nest-handler nest-handler s)]
-                (recur s (vec (concat t t1)))) ;note: concat return lazy seq instead of vector
-
-              (and (= c \*) (= suc \/)) ;end
-              {:char-seq (rest (rest s))
-               :token-seq (conj (:token-seq curr) {:token 'comment :value (str/join t)})}
-
-              :else (recur (rest s) (conj t c)))))))))
+                :else (recur (rest s) (conj t c) flag-count)))))))
 
 (defn tokenize [in]
   )
