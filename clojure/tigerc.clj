@@ -82,22 +82,11 @@
                                          :value (str/join t)})})))))
 
 (defn string-recognizer [curr]
-  (let [s (:char-seq curr)
-        q (:token-seq curr)]
-    (assert (= (first s) \"))
-    (loop [s s
-           t []
-           consecutive-backslash-count 0]
-      (assert (not (empty? s)))
-      (if (empty? (rest s))
-        (do (println "String" (str/join )))))))
-
-(defn string-recognizer [curr]
   (let [s (:char-seq curr) q (:token-seq curr)
         c (first s)]
     (assert (= c \"))
-    (let [csuc (second s)]
-      (case csuc
+    (let [suc (second s)]
+      (case suc
         \"
         {:char-seq (rest (rest s))
          :token-seq (conj q {:token :string :value ""})}
@@ -107,21 +96,21 @@
             (assoc curr :char-seq ()))
 
         (loop [s (rest s)
-               t [csuc]
+               t [suc]
                consecutive-backslash-count 0]
           (assert (not (empty? s)))
-          (let [c (first s)]
-            (if (empty? (rest s))
-              (do (println "String" (str/join t)
-                           "misses closing double quote.")
-                  (assoc curr :char-seq ()))
-              (let [csuc (second s) ;csuc is non-nil
-                    cbc (if (= c \\) (inc consecutive-backslash-count)
-                            0)]
-                (if (and (= csuc \") (even? cbc))
-                  {:char-seq (rest (rest s))
-                   :token-seq (conj q {:token :string :value (str/join t)})}
-                  (recur (rest s) (conj t csuc) cbc))))))))))
+          (if (empty? (rest s))
+            (do (println "String" (str/join t)
+                         "misses closing double quote.")
+                (assoc curr :char-seq ()))
+            (let [c   (first s)
+                  suc (second s) ;suc is non-nil
+                  cbc (if (= c \\) (inc consecutive-backslash-count)
+                          0)]
+              (if (and (= suc \") (even? cbc))
+                {:char-seq (rest (rest s))
+                 :token-seq (conj q {:token :string :value (str/join t)})}
+                (recur (rest s) (conj t suc) cbc)))))))))
 
 ;;Note: as defined, comment supports nesting.
 (defn comment-recognizer [curr]
