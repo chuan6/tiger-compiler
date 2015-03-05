@@ -2,17 +2,17 @@
   (:require [clojure.string :as str]))
 
 (def token-complex
-  #{'id 'comment 'digits 'string})
+  #{:id :comment :digits :string})
 
 (def token-keyword
-  #{'array 'break 'do 'else 'end 'for 'function 'if 'in
-    'let (symbol "nil") 'of 'then 'to 'type 'var 'while})
+  #{:array :break :do :else :end :for :function :if :in
+    :let :nil :of :then :to :type :var :while})
 
 (def token-punct
-  #{'comma 'colon 'semi-colon 'open-paren 'close-paren
-    'open-bracket 'close-bracket 'open-brace 'close-brace
-    'period 'plus 'minus 'star 'slash 'equal 'diamond 'lt
-    'leq 'gt 'geq 'and 'pipe 'assign})
+  #{:comma :colon :semi-colon :open-paren :close-paren
+    :open-bracket :close-bracket :open-brace :close-brace
+    :period :plus :minus :star :slash :equal :diamond :lt
+    :leq :gt :geq :and :pipe :assign})
 
 (def token-set
   (clojure.set/union token-complex
@@ -49,7 +49,7 @@
         search (fn [tree key]
                  (tree-search tree key (fn [x y] (compare x (str y)))))
         kwords (reduce insert nil token-keyword)]
-    (search kwords s)))
+    (search kwords (str (keyword s)))))
 
 (defn id-recognizer [curr]
   (let [s (:char-seq curr)
@@ -66,7 +66,7 @@
               {:char-seq s :token-seq (conj (:token-seq curr)
                                             {:token kword})}
               {:char-seq s :token-seq (conj (:token-seq curr)
-                                            {:token 'id :name token})})))))))
+                                            {:token :id :name token})})))))))
 
 (defn digits-recognizer [curr]
   (let [s (:char-seq curr)
@@ -78,7 +78,7 @@
         (if (and c (Character/isDigit c))
           (recur (rest s) (conj t c))
           {:char-seq s :token-seq (conj (:token-seq curr)
-                                        {:token 'digits
+                                        {:token :digits
                                          :value (str/join t)})})))))
 
 (defn string-recognizer [curr]
@@ -87,7 +87,7 @@
         token-seq (:token-seq curr)]
     (if (= (first s) \") ;if true, empty string found
       {:char-seq (rest s)
-       :token-seq (conj token-seq {:token 'string :value ""})}
+       :token-seq (conj token-seq {:token :string :value ""})}
       (loop [s s
              t []
              consecutive-backslash-count 0]
@@ -101,7 +101,7 @@
             (if (and (= peek \") (even? cbc))
               {:char-seq (rest (rest s))
                :token-seq (conj token-seq
-                                {:token 'string :value (str/join (conj t c))})}
+                                {:token :string :value (str/join (conj t c))})}
               (recur (rest s) (conj t c) cbc))))))))
 
 ;;Note: as defined, comment supports nesting.
@@ -123,7 +123,7 @@
                   (if (= flag-count 0)
                     {:char-seq (rest (rest s))
                      :token-seq (conj (:token-seq curr)
-                                      {:token 'comment :value (str/join t)})}
+                                      {:token :comment :value (str/join t)})}
                     (recur (rest (rest s)) ;note pattern */*
                            (-> t (conj c) (conj suc))
                            flag-count)))
@@ -157,54 +157,53 @@
         (if (empty? s)
           (:token-seq curr)
           (let [c   (first s)
-                suc (second s)] ;csuc may be nil
+                suc (second s)] ;suc may be nil
             (cond
               (Character/isWhitespace c) ;skip leading spaces
               (recur (skip-spaces curr))
               
-              (Character/isLetter c)     ;find an 'id, or keyword token
+              (Character/isLetter c)     ;find an :id, or keyword token
               (recur (id-recognizer curr))
 
-              (= c \")                   ;find a 'string token
+              (= c \")                   ;find a :string token
               (recur (string-recognizer curr))
 
-              (Character/isDigit c)      ;find a 'digits token
+              (Character/isDigit c)      ;find a :digits token
               (recur (digits-recognizer curr))
 
-              (= c \/)                   ;find a 'comment, or a 'slash token
+              (= c \/)                   ;find a :comment, or a :slash token
               (if (and suc (= suc \*))
                 (recur (comment-recognizer curr))
                 (recur {:char-seq (rest s)
-                        :token-seq (conj q {:token 'slash})}))
+                        :token-seq (conj q {:token :slash})}))
 
               :else
               (case c
-                \, (recur (add-punct curr 'comma 1))
+                \, (recur (add-punct curr :comma 1))
                 \: (if (and suc (= suc \=))
-                     (recur (add-punct curr 'assign 2))
-                     (recur (add-punct curr 'colon 1)))
-                \; (recur (add-punct curr 'semi-colon 1))
-                \( (recur (add-punct curr 'open-paren 1))
-                \) (recur (add-punct curr 'close-paren 1))
-                \[ (recur (add-punct curr 'open-bracket 1))
-                \] (recur (add-punct curr 'close-bracket 1))
-                \{ (recur (add-punct curr 'open-brace 1))
-                \} (recur (add-punct curr 'close-brace 1))
-                \. (recur (add-punct curr 'period 1))
-                \+ (recur (add-punct curr 'plus 1))
-                \- (recur (add-punct curr 'minus 1))
-                \* (recur (add-punct curr 'star 1))
-                \= (recur (add-punct curr 'equal 1))
-                \< (cond (and suc (= suc \>)) (recur (add-punct curr 'diamond 2))
-                         (and suc (= suc \=)) (recur (add-punct curr 'leq 2))
-                         :else (recur (add-punct curr 'lt 1)))
-                \> (if (and suc (= suc \=)) (recur (add-punct curr 'geq 2))
-                       (recur (add-punct curr 'gt 1)))
-                \& (recur (add-punct curr 'and 1))
-                \| (recur (add-punct curr 'pipe 1))
+                     (recur (add-punct curr :assign 2))
+                     (recur (add-punct curr :colon 1)))
+                \; (recur (add-punct curr :semi-colon 1))
+                \( (recur (add-punct curr :open-paren 1))
+                \) (recur (add-punct curr :close-paren 1))
+                \[ (recur (add-punct curr :open-bracket 1))
+                \] (recur (add-punct curr :close-bracket 1))
+                \{ (recur (add-punct curr :open-brace 1))
+                \} (recur (add-punct curr :close-brace 1))
+                \. (recur (add-punct curr :period 1))
+                \+ (recur (add-punct curr :plus 1))
+                \- (recur (add-punct curr :minus 1))
+                \* (recur (add-punct curr :star 1))
+                \= (recur (add-punct curr :equal 1))
+                \< (cond (and suc (= suc \>)) (recur (add-punct curr :diamond 2))
+                         (and suc (= suc \=)) (recur (add-punct curr :leq 2))
+                         :else (recur (add-punct curr :lt 1)))
+                \> (if (and suc (= suc \=)) (recur (add-punct curr :geq 2))
+                       (recur (add-punct curr :gt 1)))
+                \& (recur (add-punct curr :and 1))
+                \| (recur (add-punct curr :pipe 1))
                 (:token-seq curr)))))))))
 
 (defn tokenize-file [path-to-file]
-  (let [str (try (slurp path-to-file)
-                 (catch Exception e (.getMessage e)))]
+  (let [str (slurp path-to-file)]
     (tokenize-str str)))
