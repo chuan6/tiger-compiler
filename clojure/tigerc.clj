@@ -82,27 +82,46 @@
                                          :value (str/join t)})})))))
 
 (defn string-recognizer [curr]
-  (assert (= (first (:char-seq curr)) \"))
-  (let [s (rest (:char-seq curr))
-        token-seq (:token-seq curr)]
-    (if (= (first s) \") ;if true, empty string found
-      {:char-seq (rest s)
-       :token-seq (conj token-seq {:token :string :value ""})}
-      (loop [s s
-             t []
-             consecutive-backslash-count 0]
-        (if (or (empty? s) (empty? (rest s)))
-          (do (println "String" (str/join t) "misses closing double-quote.")
-              (assoc curr :char-seq ())) ;the problematic token is not recorded
-          (let [c    (first s)
-                peek (second s) ;c and peek are non-nil
-                cbc  (if (= c \\) (inc consecutive-backslash-count)
-                         0)]
-            (if (and (= peek \") (even? cbc))
-              {:char-seq (rest (rest s))
-               :token-seq (conj token-seq
-                                {:token :string :value (str/join (conj t c))})}
-              (recur (rest s) (conj t c) cbc))))))))
+  (let [s (:char-seq curr)
+        q (:token-seq curr)]
+    (assert (= (first s) \"))
+    (loop [s s
+           t []
+           consecutive-backslash-count 0]
+      (assert (not (empty? s)))
+      (if (empty? (rest s))
+        (do (println "String" (str/join )))))))
+
+(defn string-recognizer [curr]
+  (let [s (:char-seq curr) q (:token-seq curr)
+        c (first s)]
+    (assert (= c \"))
+    (let [csuc (second s)]
+      (case csuc
+        \"
+        {:char-seq (rest (rest s))
+         :token-seq (conj q {:token :string :value ""})}
+
+        nil
+        (do (println "String misses closing double-quote.")
+            (assoc curr :char-seq ()))
+
+        (loop [s (rest s)
+               t [csuc]
+               consecutive-backslash-count 0]
+          (assert (not (empty? s)))
+          (let [c (first s)]
+            (if (empty? (rest s))
+              (do (println "String" (str/join t)
+                           "misses closing double quote.")
+                  (assoc curr :char-seq ()))
+              (let [csuc (second s) ;csuc is non-nil
+                    cbc (if (= c \\) (inc consecutive-backslash-count)
+                            0)]
+                (if (and (= csuc \") (even? cbc))
+                  {:char-seq (rest (rest s))
+                   :token-seq (conj q {:token :string :value (str/join t)})}
+                  (recur (rest s) (conj t csuc) cbc))))))))))
 
 ;;Note: as defined, comment supports nesting.
 (defn comment-recognizer [curr]
