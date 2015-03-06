@@ -140,6 +140,16 @@
           (println ">" (clojure.set/difference tset target))
           false))))
 
+(def parse-string
+  (insta/parser
+   "S = '\"' Q
+    Q = '\"' | '\\\\' C | !('\"' | '\\\\') #'\\p{Print}' Q
+    C = '\\\\' Q | !'\\\\' #'\\p{Print}' Q"))
+
+(def parse-comment
+  (insta/parser
+   "S = '/*' R? S? R? '*/'
+    R = #'\\p{Print}' | !'*/' #'\\p{Print}' #'\\p{Print}' | !'/*' #'\\p{Print}' #'\\p{Print}' R"))
 
 (defn tranform [t]
   (insta/transform {:exp (fn [e] e)
