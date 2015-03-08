@@ -36,34 +36,33 @@
      [:let :decl-list :in :expr-seq :end]]
 
     :expr-seq
-    [empty-string
+    [[empty-string]
      [:expr :expr-seq-tail]]
-
     :expr-seq-tail
-    [empty-string
+    [[empty-string]
      [:semi-colon :expr :expr-seq-tail]]
 
     :expr-list
-    [empty-string
+    [[empty-string]
      [:expr :expr-list-tail]]
 
     :expr-list-tail
-    [empty-string
+    [[empty-string]
      [:comma :expr :expr-list-tail]]
 
     :field-list
-    [empty-string
+    [[empty-string]
      [:id :equal :expr :field-list-tail]]
 
     :field-list-tail
-    [empty-string
+    [[empty-string]
      [:comma :id :equal :expr :field-list-tail]]
 
     :lvalue
     [[:id :lvalue-tail]]
 
     :lvalue-tail
-    [empty-string
+    [[empty-string]
      [:period :id :lvalue-tail]
      [:open-bracket :expr :close-bracket :lvalue-tail]]
 
@@ -71,7 +70,7 @@
     [[:plus] [:minus] [:star] [:slash] [:equal] [:diamond] [:lt] [:gt] [:leq] [:geq] [:and] [:pipe]]
 
     :decl-list
-    [empty-string
+    [[empty-string]
      [:decl :decl-list]]
 
     :decl
@@ -86,11 +85,11 @@
      [:array :of :ty-id]]
 
     :ty-fields
-    [empty-string
+    [[empty-string]
      [:ty-field :ty-fields-tail]]
 
     :ty-fields-tail
-    [empty-string
+    [[empty-string]
      [:comma :ty-field :ty-fields-tail]]
 
     :ty-field
@@ -104,10 +103,10 @@
     [[:function :id :open-paren :ty-fields :close-paren :equal :expr]
      [:function :id :open-paren :ty-fields :close-paren :colon :ty-id :equal :expr]]}})
 
-(defn verify [grammar]
+(defn grammar-inv [g]
   "terminals found in :productions of the grammar equals its :terminals, or not"
-  (let [target (:terminals grammar)
-        prod-dict (:productions grammar)
+  (let [target (:terminals g)
+        prod-dict (:productions g)
         tset  (loop [ps (seq prod-dict)
                      ts #{}]
                 (if (empty? ps)
@@ -122,18 +121,16 @@
                          (recur
                           (rest p-alts)
                           (let [p-alt (first p-alts)]
-                            (if (= p-alt empty-string)
-                              ts
-                              (loop [p-seq (seq p-alt)
-                                     ts ts]
-                                (if (empty? p-seq)
-                                  ts
-                                  (recur
-                                   (rest p-seq)
-                                   (let [k (first p-seq)]
-                                     (if (k prod-dict)
-                                       ts
-                                       (conj ts k)))))))))))))))]
+                            (loop [p-seq (seq p-alt)
+                                   ts ts]
+                              (if (empty? p-seq)
+                                ts
+                                (recur
+                                 (rest p-seq)
+                                 (let [k (first p-seq)]
+                                   (if (k prod-dict)
+                                     ts
+                                     (conj ts k))))))))))))))]
     (if (= target tset)
       (do (println "well defined.") true)
       (do (println "<" (clojure.set/difference target tset))
@@ -150,6 +147,47 @@
   (insta/parser
    "S = '/*' R? S? R? '*/'
     R = #'\\p{Print}' | !'*/' #'\\p{Print}' #'\\p{Print}' | !'/*' #'\\p{Print}' #'\\p{Print}' R"))
+
+(def aug-start :S)
+(defn aug-start-inv [g] (and (nil? (aug-start (:productions g)))
+                             (nil? ((:terminals g) aug-start))))
+
+(defn augment-grammar [g]
+  (let [prod-dict (:productions g)]
+    (assert (and (nil? (aug-start prod-dict)) (nil? ((:terminals g) aug-start))))
+    (-> g
+        (assoc :start aug-start)
+        (assoc :productions (assoc prod-dict aug-start [[(:start g)]])))))
+
+(def item {:left aug-start :nth 0 :pos 0})
+(defn item-inc-pos [curr]
+  (let [pos (:pos curr)]
+    (assert (and (integer? pos) (>= pos 0)))
+    (assoc curr :pos (inc pos))))
+
+(defn closure
+  "given grammar, item, and current closure dictionary, compute the complete closure"
+  [g x cls]
+  (let [prod-dict (:productions g)
+        next ((((:left x) prod-dict) (:nth x)) (:pos x))]
+    (if (next cls)
+      cls
+      (let [v (next prod-dict)]
+        (if (nil? v)
+          cls
+          (let [n (count v)
+                c (loop [i 0
+                         c []]
+                    (if (< i n)
+                      (recur (inc i) (conj c {:left next :nth i :pos 0}))
+                      c))
+                cls (assoc cls next c)]
+            (loop [i 0
+                   cls cls]
+              (if (< i n)
+                (recur (inc i) (closure g (c i) cls))
+                cls))))))))
+
 
 (defn tranform [t]
   (insta/transform {:exp (fn [e] e)
