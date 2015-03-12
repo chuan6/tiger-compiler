@@ -157,24 +157,6 @@
    "S = '/*' R? S? R? '*/'
     R = #'\\p{Print}' | !'*/' #'\\p{Print}' #'\\p{Print}' | !'/*' #'\\p{Print}' #'\\p{Print}' R"))
 
-(defn prod-vec
-  "turn production dictionary of a grammar into vector of productions"
-  [g]
-  (let [prod-map (:productions g)]
-    (loop [xs (keys prod-map)
-           pset #{}]
-      (if (empty? xs)
-        (vec pset)
-        (recur
-         (rest xs)
-         (let [x (first xs)
-               pvec (x prod-map)
-               n (count pvec)]
-           (loop [i 0 pset pset]
-             (if (= i n)
-               pset
-               (recur (inc i)
-                      (conj pset (conj [x] (pvec i))))))))))))
 (def aug-start :S)
 (defn aug-start-inv [g] (and (nil? (aug-start (:productions g)))
                              (nil? ((:terminals g) aug-start))))
@@ -192,7 +174,16 @@
   (let [{nt :left x :nth y :pos} item-x
         prod-dict (:productions g)
         v (nt prod-dict)]
-    (and v (>= x 0) (>= y 0) (< x (count v)) (< y (count (v x))))))
+    (and v (>= x 0) (>= y 0) (< x (count v)) (<= y (count (v x))))))
+
+;;expect valid item
+(defn end-lr-item?
+  "Is the item at the end of its production?"
+  [item-x g]
+  (let [{nt :left x :nth y :pos} item-x
+        prod-dict (:productions g)
+        n (count ((nt prod-dict) x))]
+    (= n y)))
 
 ;;expect valid item
 (defn decode-lr-item [item-x g]
@@ -216,25 +207,32 @@
                 (rest s)))))
   (loop [cls #{} s (seq lr-item-set) done-set #{}]
     (if (empty? s)
+      ;;add initial item set to closure in the end, to ensure that
+      ;;done-set works as intended
       (clojure.set/union cls lr-item-set)
-      (let [x (decode-lr-item (first s) g)
-            prod-dict (:productions g)
-            v (x prod-dict)]
-        (if (or (nil? v) (done-set x))
+      (let [item-x (first s)]
+        (if (end-lr-item? item-x g)
           (recur cls (rest s) done-set)
-          (let [item-x (assoc lr-item :left x)
-                n (count v)
-                [cls s] (loop [cls cls s (rest s) i 0]
-                          (if (= i n)
-                            [cls s]
-                            (let [item-y (assoc item-x :nth i)
-                                  y (decode-lr-item item-y g)]
-                              (if (y prod-dict) ;if item-y is a non-terminal,
-                                ;;add it to s, instead of adding it to cls directly
-                                (recur (conj cls item-y) (conj s item-y) (inc i))
-                                ;;otherwise, add it to cls
-                                (recur (conj cls item-y) s (inc i))))))]
-            (recur cls s (conj done-set x))))))))
+          (let [x (decode-lr-item item-x g)
+                prod-dict (:productions g)
+                v (x prod-dict)]
+            (if (or (nil? v)
+                    (done-set x))
+              ;;either x is a terminal grammar symbol, or relevant items
+              ;;of which :left is x has already been added to closure
+              (recur cls (rest s) done-set)
+              ;;otherwise, expand closure on x, and maybe further
+              (let [item-x (assoc lr-item :left x)
+                    n (count v)
+                    [cls s] (loop [cls cls s (rest s) i 0]
+                              (if (= i n)
+                                [cls s]
+                                (let [item-y (assoc item-x :nth i)
+                                      y (decode-lr-item item-y g)]
+                                  (recur (conj cls item-y)
+                                         (if (y prod-dict) (conj s item-y) s)
+                                         (inc i)))))]
+                (recur cls s (conj done-set x))))))))))
 
 (defn tranform [t]
   (insta/transform {:exp (fn [e] e)
