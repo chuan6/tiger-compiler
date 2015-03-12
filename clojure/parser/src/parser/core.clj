@@ -252,6 +252,37 @@
                            (rest s))))]
     (lr-closure lr-item-set g)))
 
+(defn list-grammar-symbols [g]
+  (let [s (seq (conj (:terminals g) (:start g)))]
+    (concat s (keys (:productions g)))))
+
+(defn iterate-til-fixed [f x]
+  (let [x' (f x)]
+    (if (= x' x) x (iterate-til-fixed f x')))) ;powerful '=' operation!
+
+(defn canonical-coll [g]
+  (let [g (augment-grammar g)
+        symbols (list-grammar-symbols g)
+
+        reducer-0 ;for each grammar symbol in grammar g
+        (fn [lr-item-set]
+          (fn [coll sym]
+            (let [x (lr-goto lr-item-set sym g)]
+              (if (or (empty? x) (contains? coll x))
+                coll (conj coll x)))))
+
+        reducer-1 ;for each item set in current collection
+        (fn [coll lr-item-set]
+          (reduce (reducer-0 lr-item-set) coll symbols))
+
+        f
+        (fn [coll]
+          (reduce reducer-1 coll (seq coll)))
+
+        coll #{(lr-closure #{{:left aug-start :nth 0 :pos 0}} g)}
+        ]
+    (iterate-til-fixed f coll)))
+
 (defn tranform [t]
   (insta/transform {:exp (fn [e] e)
                     :int (fn [i] [:int (edn/read-string i)])
