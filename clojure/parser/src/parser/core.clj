@@ -197,7 +197,7 @@
         prod-dict (:productions g)
         limit (count ((nt prod-dict) x))
         y (inc y)]
-    (if (< y limit) (assoc item-x :pos y))))
+    (if (<= y limit) (assoc item-x :pos y))))
 
 (defn lr-closure [lr-item-set g]
   (assert ;every item is valid in g
@@ -233,6 +233,24 @@
                                          (if (y prod-dict) (conj s item-y) s)
                                          (inc i)))))]
                 (recur cls s (conj done-set x))))))))))
+
+(defn lr-goto [lr-item-set x g]
+  (assert ;x is a grammar symbol of g, and every item in lr-item-set is valid
+   (and (or ((:terminals g) x) (x (:productions g)))
+        (loop [t true s (seq lr-item-set)]
+          (if (empty? s) t
+              (recur (and t (valid-lr-item? (first s) g))
+                     (rest s))))))
+  (let [lr-item-set (loop [r #{} s (seq lr-item-set)]
+                      (if (empty? s) r
+                          (recur
+                           (let [item-y (first s)]
+                             (if (end-lr-item? item-y g) r
+                                 (let [y (decode-lr-item item-y g)]
+                                   (if (not (= y x)) r
+                                     (conj r (forward-lr-item item-y g))))))
+                           (rest s))))]
+    (lr-closure lr-item-set g)))
 
 (defn tranform [t]
   (insta/transform {:exp (fn [e] e)
