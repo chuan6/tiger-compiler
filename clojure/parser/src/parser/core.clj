@@ -3,6 +3,15 @@
             [instaparse.core :as insta]))
 
 (def empty-string :ε)
+(def end-string :$)
+
+(def test-grammar
+  {:terminals #{:plus :times :open-paren :close-paren :id}
+   :start :e
+   :productions
+   {:e [[:e :plus :t] [:t]]
+    :t [[:t :times :f] [:f]]
+    :f [[:open-paren :e :close-paren] [:id]]}})
 
 (def tiger-grammar
   {:terminals
@@ -148,6 +157,24 @@
    "S = '/*' R? S? R? '*/'
     R = #'\\p{Print}' | !'*/' #'\\p{Print}' #'\\p{Print}' | !'/*' #'\\p{Print}' #'\\p{Print}' R"))
 
+(defn prod-vec
+  "turn production dictionary of a grammar into vector of productions"
+  [g]
+  (let [prod-map (:productions g)]
+    (loop [xs (keys prod-map)
+           pset #{}]
+      (if (empty? xs)
+        (vec pset)
+        (recur
+         (rest xs)
+         (let [x (first xs)
+               pvec (x prod-map)
+               n (count pvec)]
+           (loop [i 0 pset pset]
+             (if (= i n)
+               pset
+               (recur (inc i)
+                      (conj pset (conj [x] (pvec i))))))))))))
 (def aug-start :S)
 (defn aug-start-inv [g] (and (nil? (aug-start (:productions g)))
                              (nil? ((:terminals g) aug-start))))
@@ -157,37 +184,57 @@
     (assert (and (nil? (aug-start prod-dict)) (nil? ((:terminals g) aug-start))))
     (-> g
         (assoc :start aug-start)
-        (assoc :productions (assoc prod-dict aug-start [[(:start g)]])))))
+        (assoc :productions (assoc prod-dict aug-start [[(:start g) end-string]])))))
 
-(def item {:left aug-start :nth 0 :pos 0})
-(defn item-inc-pos [curr]
-  (let [pos (:pos curr)]
-    (assert (and (integer? pos) (>= pos 0)))
-    (assoc curr :pos (inc pos))))
+(def lr-item {:left aug-start :nth 0 :pos 0})
 
-(defn closure
-  "given grammar, item, and current closure dictionary, compute the complete closure"
-  [g x cls]
-  (let [prod-dict (:productions g)
-        next ((((:left x) prod-dict) (:nth x)) (:pos x))]
-    (if (next cls)
-      cls
-      (let [v (next prod-dict)]
-        (if (nil? v)
-          cls
-          (let [n (count v)
-                c (loop [i 0
-                         c []]
-                    (if (< i n)
-                      (recur (inc i) (conj c {:left next :nth i :pos 0}))
-                      c))
-                cls (assoc cls next c)]
-            (loop [i 0
-                   cls cls]
-              (if (< i n)
-                (recur (inc i) (closure g (c i) cls))
-                cls))))))))
+(defn valid-lr-item? [item-x g]
+  (let [{nt :left x :nth y :pos} item-x
+        prod-dict (:productions g)
+        v (nt prod-dict)]
+    (and v (>= x 0) (>= y 0) (< x (count v)) (< y (count (v x))))))
 
+;;expect valid item
+(defn decode-lr-item [item-x g]
+  (let [{nt :left x :nth y :pos} item-x
+        prod-dict (:productions g)]
+    (((nt prod-dict) x) y)))
+
+;;expect valid item
+(defn forward-lr-item [item-x g]
+  (let [{nt :left x :nth y :pos} item-x
+        prod-dict (:productions g)
+        limit (count ((nt prod-dict) x))
+        y (inc y)]
+    (if (< y limit) (assoc item-x :pos y))))
+
+(defn lr-closure [lr-item-set g]
+  (assert ;every item is valid in g
+   (loop [t true s (seq lr-item-set)]
+     (if (empty? s) t
+         (recur (and t (valid-lr-item? (first s) g))
+                (rest s)))))
+  (loop [cls #{} s (seq lr-item-set) done-set #{}]
+    (if (empty? s)
+      (clojure.set/union cls lr-item-set)
+      (let [x (decode-lr-item (first s) g)
+            prod-dict (:productions g)
+            v (x prod-dict)]
+        (if (or (nil? v) (done-set x))
+          (recur cls (rest s) done-set)
+          (let [item-x (assoc lr-item :left x)
+                n (count v)
+                [cls s] (loop [cls cls s (rest s) i 0]
+                          (if (= i n)
+                            [cls s]
+                            (let [item-y (assoc item-x :nth i)
+                                  y (decode-lr-item item-y g)]
+                              (if (y prod-dict) ;if item-y is a non-terminal,
+                                ;;add it to s, instead of adding it to cls directly
+                                (recur (conj cls item-y) (conj s item-y) (inc i))
+                                ;;otherwise, add it to cls
+                                (recur (conj cls item-y) s (inc i))))))]
+            (recur cls s (conj done-set x))))))))
 
 (defn tranform [t]
   (insta/transform {:exp (fn [e] e)
