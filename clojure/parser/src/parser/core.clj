@@ -253,7 +253,7 @@
     (lr-closure lr-item-set g)))
 
 (defn list-grammar-symbols [g]
-  (let [s (seq (conj (:terminals g) (:start g)))]
+  (let [s (seq (:terminals g))]
     (concat s (keys (:productions g)))))
 
 (defn iterate-til-fixed [f x]
