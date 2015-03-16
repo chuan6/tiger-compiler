@@ -283,6 +283,55 @@
         ]
     (iterate-til-fixed f coll)))
 
+(def action-shift {:action :shift :state 0})
+(def action-reduce {:action :reduce :state 0})
+(def action-accept {:action :accept :state 0})
+(def action-error {:action :error :state 0})
+
+(defn consolidate-cc
+  "Correspond each element of a canonical collection with a
+  sequence number; support query by an element, and by
+  a sequence number."
+  [cc]
+  (let [ccv (vec cc) n (count ccv)]
+    {:by-x ccv
+     :by-y (loop [ccm {} i 0]
+             (if (= i n)
+               ccm
+               (recur (assoc ccm (ccv i) i)
+                      (inc i))))}))
+
+(defn items-by-state
+  "get item set from consolidated canonical collection by state"
+  [ccc state]
+  (assert (>= state 0))
+  (let [v (:by-x ccc) n (count v)]
+    (if (< state n) (v state))))
+
+(defn state-by-items
+  "get state number from consolidated canonical collection by item set"
+  [ccc items]
+  (get (:by-y ccc) items))
+
+(defn ccc-test [ccc]
+  (let [{x :by-x y :by-y} ccc
+        ks (keys y)]
+    (loop [t (= (count ks) (count x))
+           ks ks]
+      (if (or (not t) (empty? ks))
+        t
+        (recur (let [k (first ks)]
+                 (and t
+                      (= k (->> k (state-by-items ccc)
+                                (items-by-state ccc)))))
+               (rest ks))))))
+
+(defn slr-action-tab [ccc g]
+  ())
+
+(defn construct-slr-table [cc]
+  ())
+
 (defn tranform [t]
   (insta/transform {:exp (fn [e] e)
                     :int (fn [i] [:int (edn/read-string i)])
