@@ -347,7 +347,7 @@
 
 (defn lr-goto [lr-item-set x g]
   (assert ;x is a grammar symbol of g, and every item in lr-item-set is valid
-   (and (or (terminal? g x) (x (:productions g)))
+   (and (or (terminal? g x) (get (:productions g) x))
         (loop [t true s (seq lr-item-set)]
           (if (empty? s) t
               (recur (and t (valid-lr-item? (first s) g))
@@ -437,19 +437,19 @@
                                 (items-by-state ccc)))))
                (rest ks))))))
 
-(defn slr-action-tab [ccc g]
-  (let [terms (seq (conj (:terminals g) end-marker))
-        state (fn [items] (state-by-items ccc items))
-        items (fn [state] (items-by-state ccc state))
-        decode (fn [item] (decode-lr-item item g))
-        end? (fn [item] (end-lr-item? item g))
-        act-shift (fn [state] (assoc action-shift :state state))
+(defn slr-action-tab [g ccc]
+  (let [terms      (seq (conj (:terminals g) end-marker))
+        state      (fn [items] (state-by-items ccc items))
+        items      (fn [state] (items-by-state ccc state))
+        decode     (fn [item] (decode-lr-item item g))
+        end?       (fn [item] (end-lr-item? item g))
+        act-shift  (fn [state] (assoc action-shift :state state))
         act-reduce (fn [production] (assoc action-reduce :production production))
         act-accept action-accept
-        act-error action-error
-        follow? (let [flwset (follow-set g)]
-                  (fn [a left] (contains? (get flwset left) a)))
-        goto (fn [its s] (lr-goto its s g))
+        act-error  action-error
+        follow?    (let [flwset (follow-set g)]
+                     (fn [a left] (contains? (get flwset left) a)))
+        goto       (fn [its s] (lr-goto its s g))
 
         for-items
         (fn [its a] ;given items of the current state and a terminal
@@ -477,9 +477,25 @@
               (let [t (first ts)]
                 (recur
                  (assoc row t (reduce (for-items its t) nil (seq its)))
-                 (rest ts))))))
-        ]
+                 (rest ts))))))]
     (reduce for-states [] (:by-x ccc))))
 
-(defn construct-slr-table [cc]
+(defn slr-goto-table [g ccc]
+  (let [nterms (keys (:productions g))
+        state (fn [items] (state-by-items ccc items))
+        goto (fn [its s] (lr-goto its s g))
+
+        for-states
+        (fn [tab its]
+          (assert (vector? tab))
+          (loop [row {} nts nterms]
+            (if (empty? nts)
+              (conj tab row)
+              (recur
+               (let [nt (first nts)]
+                 (assoc row nt (state (goto its nt))))
+               (rest nts)))))]
+    (reduce for-states [] (:by-x ccc))))
+
+(defn construct-slr-table [g cc]
   ())
