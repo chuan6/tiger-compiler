@@ -103,6 +103,12 @@
     [[:function :id :open-paren :ty-fields :close-paren :equal :expr]
      [:function :id :open-paren :ty-fields :close-paren :colon :id :equal :expr]]}})
 
+(def if-grammar
+  {:terminals #{:if :then :else}
+   :start :e
+   :productions
+   {:e [[:if :e :then :e] [:if :e :then :e :else :e]]}})
+
 (def tiger-grammar-slr
   {:terminals
    #{:array :break :do :else :end :for :function :if :in
@@ -117,38 +123,38 @@
    :start :expr
 
    :productions
-   {:expr [[:vexpr] [:lvalue :assign :vexpr]
+   {:expr [[:val]
+           [:lvalue :assign :expr]
            [:id :open-paren :close-paren]
-           [:id :open-paren :vexpr-list :close-paren]
+           [:id :open-paren :expr-list :close-paren]
            [:open-paren :close-paren]
-           [:open-paren :expr-seq :close-paren]
-           [:if :vexpr :then :expr]
-           [:if :vexpr :then :expr :else :expr]
-           [:while :vexpr :do :expr]
-           [:for :id :assign :vexpr :to :vexpr :do :expr]
+           ;;           [:open-paren :expr-seq :close-paren]
+           [:ty-id :open-brace :close-brace]
+           [:ty-id :open-brace :field-list :close-brace]
+           [:ty-id :open-bracket :expr :close-bracket :of :expr]
+           [:if :expr :then :expr]
+           [:if :expr :then :expr :else :expr]
+           [:while :expr :do :expr]
+           [:for :id :assign :expr :to :expr :do :expr]
            [:break]
            [:let :decl-list :in :end]
            [:let :decl-list :in :expr-seq :end]]
+    :lvalue [[:id] [:lvalue :period :id]
+             [:lvalue :open-bracket :expr :close-bracket]]
+    :expr-list [[:expr] [:expr-list :comma :expr]]
     :expr-seq [[:expr] [:expr-seq :semi-colon :expr]]
-    :atom [[:string] [:digits] [:nil]]
-    :vexpr [[:atom] [:lvalue] [:minus :vexpr]
-            [:ty-id :open-brace :close-brace]
-            [:ty-id :open-brace :field-list :close-brace]
-            [:ty-id :open-bracket :vexpr :close-bracket :of :vexpr]
-            [:if :vexpr :then :vexpr :else :vexpr]
-            [:or-term :vexpr-binop]]
-    :vexpr-binop [[empty-string] [:pipe :or-term :vexpr-binop]]
+    :val [[:minus :val] [:arith]]
+    :arith [[:arith :pipe :or-term] [:or-term]]
     :or-term [[:or-term :and :and-term] [:and-term]]
     :and-term [[:and-term :comp :comp-term] [:comp-term]]
-    :comp-term [[:comp-term :cal-0 :term] [:term]]
+    :comp-term [[:string] [:comp-term :cal-0 :term] [:term]]
     :term [[:term :cal-1 :factor] [:factor]]
-    :factor [[:open-paren :vexpr :close-paren] [:atom]]
-    :comp [[:equal] [:diamond] [:lt] [:leq] [:gt] [:geq]]
+    :factor [[:digits] [:nil] [:lvalue]
+             [:open-paren :expr-seq :close-paren]]
+    :comp [[:equal] [:lt] [:gt] [:leq] [:geq] [:diamond]]
     :cal-0 [[:plus] [:minus]]
     :cal-1 [[:star] [:slash]]
-    :lvalue [[:id] [:lvalue :period :id] [:lvalue :open-bracket :vexpr :close-bracket]]
-    :vexpr-list [[:vexpr] [:vexpr-list :comma :vexpr]]
-    :field-list [[:id :equal :vexpr] [:field-list :comma :id :equal :vexpr]]
+    :field-list [[:id :equal :expr] [:field-list :comma :id :equal :expr]]
     :decl-list [[:decl] [:decl-list :decl]]
     :decl [[:ty-decl] [:var-decl] [:fn-decl]]
     :ty-decl [[:type :ty-id :ty]]
@@ -271,7 +277,7 @@
 
 (defn grammar-inv [g]
   "terminals found in :productions of the grammar equals its :terminals, or not"
-  (let [target (conj (:terminals g) empty-string)
+  (let [target (:terminals g)
         prod-dict (:productions g)
         tset  (loop [ps (seq prod-dict)
                      ts #{}]
@@ -320,7 +326,7 @@
    (let [n (count xs)]
      (loop [r #{}
             i 0
-            mem mem]
+            mem mem];the loop is for the cases where first set of the current symbol contains empty string
        (if (= i n)
          r
          (let [x (xs i)]
