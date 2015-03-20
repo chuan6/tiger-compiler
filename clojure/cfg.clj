@@ -21,88 +21,6 @@
     :t [[:t :times :f] [:f]]
     :f [[:open-paren :e :close-paren] [:id]]}})
 
-(def tiger-grammar-0
-  {:terminals
-   #{:array :break :do :else :end :for :function :if :in
-     :let :nil :of :then :to :type :var :while
-     :id :digits :string ;:comment is omitted
-     :comma :colon :semi-colon :open-paren :close-paren
-     :open-bracket :close-bracket :open-brace :close-brace
-     :period :plus :minus :star :slash :equal :diamond :lt
-     :leq :gt :geq :and :pipe :assign
-     ;:ty-id is indistinguishable with :id at this stage
-     }
-   :start :expr
-   :productions
-   {:expr
-    [[:string]
-     [:digits]
-     [:nil]
-     [:lvalue]
-     [:minus :expr]
-     [:expr :binop :expr]
-     [:lvalue :assign :expr]
-     [:id :open-paren :expr-list :close-paren]
-     [:open-paren :expr-seq :close-paren]
-     [:id :open-brace :field-list :close-brace]
-     [:id :open-bracket :expr :close-bracket :of :expr]
-     [:if :expr :then :expr]
-     [:if :expr :then :expr :else :expr]
-     [:while :expr :do :expr]
-     [:for :id :assign :expr :to :expr :do :expr]
-     [:break]
-     [:let :decl-list :in :expr-seq :end]]
-
-    :expr-seq
-    [[:expr]
-     [:expr-seq :semi-colon :expr]]
-
-    :expr-list
-    [[:expr]
-     [:expr-list :comma :expr]]
-
-    :field-list
-    [[:id :equal :expr]
-     [:field-list :comma :id :equal :expr]]
-
-    :lvalue
-    [[:id]
-     [:lvalue :period :id]
-     [:lvalue :open-bracket :expr :close-bracket]]
-
-    :binop
-    [[:plus] [:minus] [:star] [:slash] [:equal] [:diamond] [:lt] [:gt] [:leq] [:geq] [:and] [:pipe]]
-
-    :decl-list
-    [[:decl]
-     [:decl-list :decl]]
-
-    :decl
-    [[:ty-decl] [:var-decl] [:fn-decl]]
-
-    :ty-decl
-    [[:type :id :ty]]
-
-    :ty
-    [[:id]
-     [:open-brace :ty-fields :close-brace]
-     [:array :of :id]]
-
-    :ty-fields
-    [[:ty-field]
-     [:ty-fields :comma :ty-field]]
-
-    :ty-field
-    [[:id :colon :id]]
-
-    :var-decl
-    [[:var :id :assign :expr]
-     [:var :id :id :assign :expr]]
-
-    :fn-decl
-    [[:function :id :open-paren :ty-fields :close-paren :equal :expr]
-     [:function :id :open-paren :ty-fields :close-paren :colon :id :equal :expr]]}})
-
 (def if-grammar
   {:terminals #{:if :then :else}
    :start :e
@@ -118,7 +36,7 @@
      :open-bracket :close-bracket :open-brace :close-brace
      :period :assign :pipe :and
      :equal :gt :lt :diamond :leq :geq
-     :minus :plus :star :slash}
+     :minus :plus :star :slash empty-string}
    
    :start :expr
 
@@ -128,17 +46,18 @@
            [:id :open-paren :close-paren]
            [:id :open-paren :expr-list :close-paren]
            [:open-paren :close-paren]
-           ;;           [:open-paren :expr-seq :close-paren]
            [:ty-id :open-brace :close-brace]
            [:ty-id :open-brace :field-list :close-brace]
            [:ty-id :open-bracket :expr :close-bracket :of :expr]
-           [:if :expr :then :expr]
-           [:if :expr :then :expr :else :expr]
+           [:if :expr :then :expr :if-tail]
+           ;;           [:if :expr :then :expr]
+           ;;         [:if :expr :then :expr :else :expr]
            [:while :expr :do :expr]
            [:for :id :assign :expr :to :expr :do :expr]
            [:break]
            [:let :decl-list :in :end]
            [:let :decl-list :in :expr-seq :end]]
+    :if-tail [[empty-string] [:else :expr]]
     :lvalue [[:id] [:lvalue :period :id]
              [:lvalue :open-bracket :expr :close-bracket]]
     :expr-list [[:expr] [:expr-list :comma :expr]]
@@ -157,123 +76,19 @@
     :field-list [[:id :equal :expr] [:field-list :comma :id :equal :expr]]
     :decl-list [[:decl] [:decl-list :decl]]
     :decl [[:ty-decl] [:var-decl] [:fn-decl]]
-    :ty-decl [[:type :ty-id :ty]]
-    :ty [[:ty-id] [:open-brace :ty-fields :close-brace] [:array :of :ty-id]]
+    :ty-decl [[:type :ty-id :equal :ty]]
+    :ty [[:ty-id]
+         [:open-brace :close-brace]
+         [:open-brace :ty-fields :close-brace]
+         [:array :of :ty-id]]
     :ty-fields [[:ty-field] [:ty-fields :comma :ty-field]]
     :ty-field [[:id :colon :ty-id]]
     :var-decl [[:var :id :assign :expr] [:var :id :ty-id :assign :expr]]
-    :fn-decl [[:function :id :open-paren :ty-fields :close-paren :equal :expr]
+    :fn-decl [[:function :id :open-paren :close-paren :equal :expr]
+              [:function :id :open-paren :ty-fields :close-paren :equal :expr]
+              [:function :id :open-paren :close-paren :colon :ty-id :equal :expr]
               [:function :id :open-paren :ty-fields :close-paren :colon :ty-id :equal :expr]]
     }})
-
-(def tiger-grammar
-  {:terminals
-   #{:array :break :do :else :end :for :function :if :in
-     :let :nil :of :then :to :type :var :while
-     :id :digits :string :ty-id ;:comment is omitted
-     :comma :colon :semi-colon :open-paren :close-paren
-     :open-bracket :close-bracket :open-brace :close-brace
-     :period :assign :pipe :and
-     :equal :gt :lt :diamond :leq :geq
-     :minus :plus :star :slash
-     ;:ty-id is indistinguishable with :id at this stage
-     }
-   :start :expr
-   :productions
-   {:expr
-    [[:nil]
-     [:binop-expr]
-     [:minus :expr];new
-     ;;     [:expr :binop :expr]
-     [:expr :pipe :or-term];:lvalue, :string, :digits, and more
-     [:or-term]
-     [:lvalue :assign :expr]
-     [:id :open-paren :expr-list :close-paren]
-     [:open-paren :expr-seq :close-paren]
-     [:ty-id :open-brace :field-list :close-brace]
-     [:ty-id :open-bracket :expr :close-bracket :of :expr]
-     [:if :expr :then :expr]
-     [:if :expr :then :expr :else :expr]
-     [:while :expr :do :expr]
-     [:for :id :assign :expr :to :expr :do :expr]
-     [:break]
-     [:let :decl-list :in :expr-seq :end]]
-
-    :expr-seq
-    [[:expr]
-     [:expr-seq :semi-colon :expr]]
-
-    :expr-list
-    [[:expr]
-     [:expr-list :comma :expr]]
-
-    :field-list
-    [[:id :equal :expr]
-     [:field-list :comma :id :equal :expr]]
-
-    :lvalue
-    [[:id]
-     [:lvalue :period :id]
-     [:lvalue :open-bracket :expr :close-bracket]]
-
-    ;;new
-;;    :binop-expr
-  ;;  [[:binop-expr :pipe :or-term] [:or-term]]
-
-    :or-term
-    [[:or-term :and :and-term] [:and-term]]
-
-    :and-term
-    [[:and-term :comp :comp-term] [:comp-term]]
-
-    :comp-term
-    [[:comp-term :cal-0 :term] [:term]]
-
-    :term
-    [[:term :cal-1 :factor] [:factor]]
-
-    :factor
-    [[:expr] [:lvalue] [:string] [:digits]]
-
-    :comp
-    [[:equal] [:diamond] [:lt] [:leq] [:gt] [:geq]]
-
-    :cal-0
-    [[:plus] [:minus]]
-
-    :cal-1
-    [[:star] [:slash]]
-    ;;new ends
-    
-    :decl-list
-    [[:decl]
-     [:decl-list :decl]]
-
-    :decl
-    [[:ty-decl] [:var-decl] [:fn-decl]]
-
-    :ty-decl
-    [[:type :ty-id :ty]]
-
-    :ty
-    [[:ty-id]
-     [:open-brace :ty-fields :close-brace]
-     [:array :of :ty-id]]
-
-    :ty-fields
-    [[:ty-field]
-     [:ty-fields :comma :ty-field]]
-
-    :ty-field
-    [[:id :colon :ty-id]]
-
-    :var-decl
-    [[:var :id :assign :expr]
-     [:var :id :ty-id :assign :expr]]
-
-    :fn-decl
-    [[:function :id :open-paren :ty-fields :close-paren :equal :expr]
-     [:function :id :open-paren :ty-fields :close-paren :colon :ty-id :equal :expr]]}})
 
 (defn grammar-inv [g]
   "terminals found in :productions of the grammar equals its :terminals, or not"
@@ -437,6 +252,7 @@
                              (nil? ((:terminals g) aug-start))))
 
 (defn augment-grammar [g]
+  (assert (grammar-inv g))
   (let [prod-dict (:productions g)]
     (assert (and (nil? (aug-start prod-dict)) (nil? ((:terminals g) aug-start))))
     (-> g
@@ -602,7 +418,7 @@
                (rest ks))))))
 
 ;;expect augmented grammar
-(defn slr-action-tab [g ccc]
+(defn slr-action-tab [g ccc prefer-shift?]
   (let [terms      (seq (conj (:terminals g) end-marker))
         state      (fn [items] (state-by-items ccc items))
         items      (fn [state] (items-by-state ccc state))
@@ -631,8 +447,14 @@
                            (act-shift (state (goto its a)))))]
               (if act'
                 (if (or (nil? act) (= act' act))
-                  act' (reduced (println "Inconsistency:" act' "with" act
-                                         "at" "[" (state its) "," a  "]")))
+                  act'
+                  (let [a0 (:action act) a1 (:action act')]
+                    (if (and (not (= a0 a1)) prefer-shift?)
+                      (condp = :shift
+                        a0 act
+                        a1 act')
+                      (reduced (println "Inconsistency:" act' "with" act
+                                        "at" "[" (state its) "," a  "]")))))
                 act))))
 
         for-states
@@ -677,39 +499,58 @@
                    (if (contains? (v i) it)
                      i (recur (inc i))))))
 
-        atab ;get an entry from action table
-        (fn [state term]
-          (let [tab (slr-action-tab g ccc)]
-            (get (tab state) term)))
+        action-tab (slr-action-tab g ccc true)
+        goto-tab (slr-goto-tab g ccc)
+
+        atab-helper ;get an entry from action table
+        (fn [state term f]
+          (let [r (get (action-tab state) term)]
+            (if r r
+                ;;otherwise, try consuming an empty-string
+                (let [s (get (action-tab state) empty-string)]
+                  (if s (f (:state s) term f))))))
+        atab
+        (fn [state term] (atab-helper state term atab-helper))
         
         gtab ;get an entry from goto table
-        (fn [state nterm]
-          (let [tab (slr-goto-tab g ccc)]
-            (get (tab state) nterm)))
+        (fn [state nterm] (get (goto-tab state) nterm))
 
-        prod-len ;get length of the right side of a production
+        prod-len ;count non-empty-string symbols in a production
         (fn [prod]
-          (count ((get (:productions g) (:left prod)) (:nth prod))))]
+          (let [pv (((:left prod) (:productions g)) (:nth prod))
+                n (count pv)]
+            (loop [c 0 i 0]
+              (if (= i n)
+                c
+                (recur (if (= (pv i) empty-string) c (inc c))
+                       (inc i))))))
+        ]
     (println "Initial state:" init ", i.e." (items-by-state ccc init))
-    (fn [token-q]
-      (loop [t-queue (conj token-q end-marker) ;token queue
-             s-stack [init]] ;state stack
-        (if (empty? t-queue)
-          s-stack
-          (let [t (peek t-queue) s (peek s-stack)
-                a (atab s t)]
+    (fn [token-v]
+      (loop [ts (seq (conj token-v {:token end-marker})) ;token queue
+             ss [init]] ;state stack
+        (println ss)
+        (if (empty? ts)
+          ss
+          (let [t (first ts) s (peek ss)
+                a (atab s (:token t))]
             (case (:action a)
               :shift
-              (recur (pop t-queue) (conj s-stack (:state a)))
+              (do (println a)
+                (recur (rest ts) (conj ss (:state a))))
 
               :reduce
-              (recur t-queue
-                     (let [n (count s-stack)
+              (recur ts
+                     (let [n (count ss)
                            p (:production a)
-                           m (prod-len p)
-                           ss (subvec 0 (- n m))]
-                       (println "reduce by" p)
-                       (conj ss (gtab (peek ss) (:left p)))))
+                           m (prod-len p)]
+                       (assert (<= m n))
+                       (let [ss (subvec ss 0 (- n m))]
+                         (println "reduce by" p)
+                         (conj ss (gtab (peek ss) (:left p))))))
 
               :accept
-              (println "accepted; tokens left:" t-queue "; stack:" s-stack))))))))
+              (println "accepted; tokens left:" ts "; stack:" ss)
+
+              (println "hit nil entry:" t "at" s))))))))
+

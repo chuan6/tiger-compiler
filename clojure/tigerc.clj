@@ -113,7 +113,7 @@
                 (recur (rest s) (conj t suc) cbc)))))))))
 
 ;;Note: as defined, comment supports nesting.
-(defn comment-recognizer [curr]
+(defn comment-recognizer [curr ignore?]
   (let [s (:char-seq curr)]
     (assert (and (= (first s) \/) (= (second s) \*)))
     (loop [s (rest (rest s))
@@ -129,9 +129,12 @@
           (cond (and (= c \*) (= suc \/)) ;closing
                 (let [flag-count (dec flag-count)]
                   (if (= flag-count 0)
-                    {:char-seq (rest (rest s))
-                     :token-seq (conj (:token-seq curr)
-                                      {:token :comment :value (str/join t)})}
+                    (let [curr (assoc curr :char-seq (rest (rest s)))]
+                      (if ignore?
+                        curr
+                        (assoc curr :token-seq
+                               (conj (:token-seq curr)
+                                     {:token :comment :value (str/join t)}))))
                     (recur (rest (rest s)) ;note pattern */*
                            (-> t (conj c) (conj suc))
                            flag-count)))
@@ -181,7 +184,7 @@
 
               (= c \/)                   ;find a :comment, or a :slash token
               (if (and suc (= suc \*))
-                (recur (comment-recognizer curr))
+                (recur (comment-recognizer curr true))
                 (recur {:char-seq (rest s)
                         :token-seq (conj q {:token :slash})}))
 
@@ -212,6 +215,74 @@
                 \| (recur (add-punct curr :pipe 1))
                 (:token-seq curr)))))))))
 
+(defn norm-id-to-ty-id
+  "find ALL cases where :id should be replaced by :ty-id, and replace them"
+  [token-v]
+  (assert (vector? token-v))
+  (comment
+    "Rules:"
+    "- :id that immediately follows :colon is :ty-id;"
+    "- :id that immediately follows :type is :ty-id;"
+    "- :id that immediately follows :array :of is :ty-id;"
+    "- :id that immediately follows :equal, which in turn,"
+    "  immediately follows :type :ty-id is :ty-id;"
+    "- :id that is immediately followed by [...] :of is :ty-id.")
+  (let [v (transient token-v)
+        n (count v)
+        seq-1 [:colon]
+        seq-2 [:type]
+        seq-3 [:array :of]
+        seq-4 [:type :ty-id :equal]
+
+        follows?
+        (fn [i sequence]
+          ;;(println i sequence)
+          (assert (= (:token (v i)) :id))
+          (let [m (count sequence)]
+            (if (< i m)
+              false
+              (loop [j (- i m) k 0]
+                (if (= j i)
+                  true
+                  (if (= (:token (v j)) (sequence k))
+                    (recur (inc j) (inc k))
+                    false))))))
+
+        followed-by-brackets-then-of?
+        (fn [i]
+          ;;(println i)
+          (assert (= (:token (v i)) :id))
+          (loop [flag 0 j (inc i)]
+            (assert (>= flag 0))
+            (if (= j n)
+              false
+              (let [t (:token (v j))]
+                (if (= flag 0)
+                  (if (= j (inc i))
+                    (if (= t :open-bracket)
+                      (recur (inc flag) (inc j)) false)
+                    (if (= t :of)
+                      true false))
+                  (recur (case t
+                           :open-bracket (inc flag)
+                           :close-bracket (dec flag)
+                           flag)
+                         (inc j)))))))
+        ]
+    (loop [i 0 v v]
+      (if (= i n)
+        (persistent! v)
+        (let [vi (v i)]
+          (if (and (= (:token vi) :id)
+                   (or (follows? i seq-1)
+                       (follows? i seq-2)
+                       (follows? i seq-3)
+                       (follows? i seq-4)
+                       (followed-by-brackets-then-of? i)))
+            (recur (inc i) (assoc! v i {:token :ty-id :name (:name vi)}))
+            (recur (inc i) v)))))))
+
 (defn tokenize-file [path-to-file]
-  (let [str (slurp path-to-file)]
-    (tokenize-str str)))
+  (let [str (slurp path-to-file)
+        tv (vec (tokenize-str str))]
+    (norm-id-to-ty-id tv)))
