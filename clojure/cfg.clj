@@ -347,10 +347,6 @@
   (let [s (seq (:terminals g))]
     (concat s (keys (:productions g)))))
 
-(defn iterate-til-fixed [f x]
-  (let [x' (f x)]
-    (if (= x' x) x (iterate-til-fixed f x')))) ;powerful '=' operation!
-
 ;;expect augmented grammar
 (defn canonical-coll [g]
   (let [symbols (list-grammar-symbols g)
@@ -499,7 +495,7 @@
                    (if (contains? (v i) it)
                      i (recur (inc i))))))
 
-        action-tab (slr-action-tab g ccc true)
+        action-tab (slr-action-tab g ccc false)
         goto-tab (slr-goto-tab g ccc)
 
         atab-helper ;get an entry from action table
@@ -529,7 +525,7 @@
     (fn [token-v]
       (loop [ts (seq (conj token-v {:token end-marker})) ;token queue
              ss [init]] ;state stack
-        (println ss)
+        (print ss "\t")
         (if (empty? ts)
           ss
           (let [t (first ts) s (peek ss)
@@ -546,7 +542,7 @@
                            m (prod-len p)]
                        (assert (<= m n))
                        (let [ss (subvec ss 0 (- n m))]
-                         (println "reduce by" p)
+                         (println (:left p) (((:left p) (:productions g)) (:nth p)))
                          (conj ss (gtab (peek ss) (:left p))))))
 
               :accept
