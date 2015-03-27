@@ -488,7 +488,22 @@
 
               :accept
               (do (println "accepted; tokens left:" ts "; stack:" ss)
-                  treev)
+                  (treev 0))
 
               (println "hit nil entry:" t "at" s))))))))
 
+(defn print-tree
+  ([t] (print-tree t 0))
+  ([t nth] ;nth controls the amount of indentation
+   (assert (vector? t))
+   (do (assert (not (vector? (t 0))))
+       (println (apply str (conj (repeat nth " ") nth)) (t 0))
+       (let [childv (t 1) n (count childv)
+             nth (inc nth)]
+         (loop [i 0]
+           (if (< i n)
+             (do (let [child (childv i)]
+                   (if (vector? child)
+                     (print-tree child nth)
+                     (println (apply str (conj (repeat nth " ") nth)) child)))
+                 (recur (inc i)))))))))
