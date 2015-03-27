@@ -349,3 +349,109 @@
   (let [str (slurp path-to-file)
         tv (vec (tokenize-str str))]
     (norm-id-to-ty-id tv)))
+
+;;expect input to be a subtree of resulting syntax tree produced by parser
+(defn type-of-expr [t]
+  ())
+
+(comment
+  :type-of-lvalue
+  "- :id"
+  "  go to corresponding symtab to find the id, and return its type as result;"
+  "- :lvalue :period :id"
+  "  find the type of the leading :lvalue, go inside its symtab entry, find the :id, and return its type as result;"
+  "- :lvalue :open-bracket :expr :close-bracket"
+  "  find the type of the leading :lvalue, assure that its an array type, and go inside its symtab entry, return type of its elements as result.")
+
+(comment
+  :type-of-factor
+  "- :digits"
+  "  it's an integer;"
+  "- :nil"
+  "  it's a nil value;"
+  "- :lvalue"
+  "  return type of the :lvalue;"
+  "- :open-paren :expr-seq :close-paren"
+  "  return type of the :expr-seq.")
+
+(comment
+  :type-of-expr-seq
+  "- :expr"
+  "  return type of the :expr;"
+  "- :expr-seq :semi-colon :expr"
+  "  return type of the ending :expr.")
+
+(comment
+  :type-of-term
+  "- :term :cal-1 :factor"
+  "  return type of the :term and the :factor, both of which MUST be integers!"
+  "- :factor"
+  "  return type of the :factor.")
+
+(comment
+  :type-of-cmp-term
+  "- :string"
+  "  it's a string;"
+  "- :cmp-term :cal-0 :term"
+  "  return type of the :cmp-term and the :term, both of which MUST be integers!"
+  "- :term"
+  "  return type of the :term.")
+
+(comment
+  :type-of-and-term
+  "- :cmp-term :cmp :cmp-term"
+  "  return type of both :cmp-term's, both of which MUST be integers or strings, and return integer;"
+  "- :cmp-term"
+  "  return type of the :cmp-term.")
+
+(comment
+  :type-of-or-term
+  "- :or-term :and :and-term"
+  "  return type of the :or-term and the :and-term, both of which MUST be integers, and return integer;"
+  "- :and-term"
+  "  return type of the :and-term.")
+
+(comment
+  :type-of-arith
+  "- :arith :pipe :or-term"
+  "  return type of the :arith and the :or-term, both of which MUST be integers, and return integer;"
+  "- :or-term"
+  "  return type of the :or-term.")
+
+(comment
+  :type-of-val
+  "- :minus :val"
+  "  :val MUST be an integer, and return integer;"
+  "- :arith"
+  "  return type of the :arith.")
+
+(comment
+  :type-of-expr
+  "- :val"
+  "  return type of the :val;"
+  "- :lvalue :assign :expr"
+  "  no-value;"
+  "- :id :open-paren :close-paren"
+  "  go to corresponding symtab, find the :id, assure that it's a function, and return its return type;"
+  "- :id :open-paren :expr-list :close-paren"
+  "  go to corresponding symtab, find the :id, assure that it's a function, and return its return type;"
+  "- :open-paren :close-paren"
+  "  no-value;"
+  "- :ty-id :open-brace :close-brace"
+  "  go to corresponding type symtab, find the :ty-id, assure that it has no fields, and return :ty-id;"
+  "- :ty-id :open-brace :field-list :close-brace"
+  "  go to corresponding type symtab, find the :ty-id, assure that it fits name, type and order of elements of :field-list, and return :ty-id;"
+  "- :ty-id :open-bracket :expr :close-bracket :of :expr"
+  "  go to corresponding type symtab, find the :ty-id, assure that :ty-id is an array type, :ty-itype of the first :expr is integer, and type of the second :expr matches the element type defined in the symtab entry;"
+  "- :if :expr :then :expr :if-tail"
+  "  if :if-tail has no children, no-value; otherwise, assure that type of the :expr and type of the :expr under :if-tail matches, and return their type;"
+  "- :while :expr :do :expr"
+  "  assure that the first :expr is of type integer, and return no-value;"
+  "- :for :id :assign :expr :to :expr :do :expr"
+  "  assure that both the first and the second :expr are of type integer, and return no-value;"
+  "- :break"
+  "  no-value;"
+  "- :let :decl-list :in :end"
+  "  no-value;"
+  "- :let :decl-list :in :expr-seq :end"
+  "  return type of the :expr-seq.")
