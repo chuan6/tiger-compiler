@@ -380,6 +380,8 @@
             r
             (recur (dec i))))))))
 
+(def semantic-env {:vtabs [] :ttabs []})
+
 (comment
   :type-of-lvalue
   "- :id"
@@ -389,15 +391,15 @@
   "- :lvalue :open-bracket :expr :close-bracket"
   "  find the type of the leading :lvalue, assure that its an array type, and go inside its symtab entry, return type of its elements as result.")
 
-(defn typeof-lvalue [var-tabs ty-tabs t]
+(defn typeof-lvalue [env t]
   (let [{i :nth cv :children} (match-prod t)]
     (case i
       0 ;[:id]
-      (symtab-lookup var-tabs (:name (cv 0)))
+      (symtab-lookup (:vtabs env) (:name (cv 0)))
       
       1 ;[:lvalue :period :id]
-      (let [rec-type (typeof-lvalue var-tabs ty-tabs (cv 0))
-            rec-entry (symtab-lookup ty-tabs rec-type)
+      (let [rec-type (typeof-lvalue env (cv 0))
+            rec-entry (symtab-lookup (:ttabs env) rec-type)
             fieldv (:fields rec-entry)
             n (count fieldv)
             target (:name (cv 2))]
@@ -408,8 +410,8 @@
                 (recur (inc i))))))
       
       2 ;[:lvalue :open-bracket :expr :close-bracket]
-      (let [arr-type (typeof-lvalue var-tabs ty-tabs (cv 0))
-            arr-entry (symtab-lookup ty-tabs arr-type)]
+      (let [arr-type (typeof-lvalue env (cv 0))
+            arr-entry (symtab-lookup (:ttabs env) arr-type)]
         (:elem-type arr-entry)))))
 
 (comment
@@ -423,6 +425,21 @@
   "- :open-paren :expr-seq :close-paren"
   "  return type of the :expr-seq.")
 
+(defn typeof-factor [env t]
+  (let [{i :nth cv :children} (match-prod t)]
+    (case i
+      0 ;[:digits]
+      :type-int
+
+      1 ;[:nil]
+      :type-nil
+
+      2 ;[:lvalue]
+      (typeof-lvalue env (cv 0))
+
+      3 ;[:open-paren :expr-seq :close-paren]
+      (typeof-expr-seq env (cv 1)))))
+
 (comment
   :type-of-expr-seq
   "- :expr"
@@ -430,12 +447,32 @@
   "- :expr-seq :semi-colon :expr"
   "  return type of the ending :expr.")
 
+(defn typeof-expr-seq [env t]
+  (let [{i :nth cv :children} (match-prod t)]
+    (case i
+      0 ;[:expr]
+      (typeof-expr env (cv 0))
+
+      1 ;[:expr-seq :semi-colon :expr]
+      (typeof-expr env (cv 2)))))
+
 (comment
   :type-of-term
   "- :term :cal-1 :factor"
   "  return type of the :term and the :factor, both of which MUST be integers!"
   "- :factor"
   "  return type of the :factor.")
+
+(defn typeof-term [env t]
+  (let [{i :nth cv :children} (match-prod t)]
+    (case i
+      0 ;[:term :cal-1 :factor]
+      (do (assert (= (typeof-term env (cv 0)) :type-int))
+          (assert (= (typeof-factor env (cv 2)) :type-int))
+          :type-int)
+
+      1 ;[:factor]
+      (typeof-factor env (cv 0)))))
 
 (comment
   :type-of-cmp-term
@@ -446,12 +483,39 @@
   "- :term"
   "  return type of the :term.")
 
+(defn typeof-cmp-term [env t]
+  (let [{i :nth cv :children} (match-prod t)]
+    (case i
+      0 ;[:string]
+      :type-str
+
+      1 ;[:cmp-term :cal-0 :term]
+      (do (assert (= (typeof-cmp-term env (cv 0)) :type-int))
+          (assert (= (typeof-term env (cv 2)) :type-int))
+          :type-int)
+
+      2 ;[:factor]
+      (typeof-factor env (cv 0)))))
+
 (comment
   :type-of-and-term
   "- :cmp-term :cmp :cmp-term"
   "  return type of both :cmp-term's, both of which MUST be integers or strings, and return integer;"
   "- :cmp-term"
   "  return type of the :cmp-term.")
+
+(defn typeof-and-term [env t]
+  (let [{i :nth cv :children} (match-prod t)]
+    (case i
+      0 ;[:cmp-term :cmp :cmp-term]
+      (let [ta (typeof-cmp-term env (cv 0))
+            tb (typeof-cmp-term env (cv 2))]
+        (assert (and (= ta tb)
+                     (or (= ta :type-int) (= ta :type-str))))
+        ta)
+
+      1 ;[:cmp-term]
+      (typeof-cmp-term env (cv 0)))))
 
 (comment
   :type-of-or-term
@@ -460,6 +524,18 @@
   "- :and-term"
   "  return type of the :and-term.")
 
+(defn typeof-or-term [env t]
+  (let [{i :nth cv :children} (match-prod t)]
+    (case i
+      0 ;[:or-term :and :and-term]
+      (let [ta (typeof-or-term env (cv 0))
+            tb (typeof-and-term env (cv 2))]
+        (assert (= ta tb :type-int))
+        :type-int)
+
+      1 ;[:and]
+      (typeof-and-term env (cv 0)))))
+
 (comment
   :type-of-arith
   "- :arith :pipe :or-term"
@@ -467,12 +543,35 @@
   "- :or-term"
   "  return type of the :or-term.")
 
+(defn typeof-arith [env t]
+  (let [{i :nth cv :children} (match-prod t)]
+    (case i
+      0 ;[:arith :pipe :or-term]
+      (let [ta (typeof-arith env (cv 0))
+            tb (typeof-or-term env (cv 2))]
+        (assert (= ta tb :type-int))
+        :type-int)
+
+      1 ;[:or-term]
+      (typeof-or-term env (cv 0)))))
+
 (comment
   :type-of-val
   "- :minus :val"
   "  :val MUST be an integer, and return integer;"
   "- :arith"
   "  return type of the :arith.")
+
+(defn typeof-val [env t]
+  (let [{i :nth cv :children} (match-prod t)]
+    (case i
+      0 ;[:minus :val]
+      (let [ta (typeof-val env (cv 1))]
+        (assert (= ta :type-int))
+        :type-int)
+
+      1 ;[:arith]
+      (typeof-arith env (cv 0)))))
 
 (comment
   :type-of-expr
@@ -504,3 +603,19 @@
   "  no-value;"
   "- :let :decl-list :in :expr-seq :end"
   "  return type of the :expr-seq.")
+
+(defn typeof-expr [env t]
+  (let [{i :nth cv :children} (match-prod t)]
+    (case i
+      0 ;[:val]
+      (typeof-val env (cv 0))
+
+      (1 ;[:lvalue :assign :expr]
+       4 ;[:open-paren :close-paren]
+       11 ;[:break]
+       12) ;[:let :decl-list :in :end]
+      :type-noval
+
+      2 ;[:id :open-paren :close-paren]
+      () 
+      )))
