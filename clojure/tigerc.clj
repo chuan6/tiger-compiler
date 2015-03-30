@@ -350,9 +350,35 @@
         tv (vec (tokenize-str str))]
     (norm-id-to-ty-id tv)))
 
-;;expect input to be a subtree of resulting syntax tree produced by parser
-(defn type-of-expr [t]
-  ())
+(defn match-prod
+  "return the matching production, and the matched vector of subtrees"
+  [tree]
+  (let [pv (get (:productions tiger-grammar-slr) (tree 0))
+        n (count pv)
+        cv (tree 1)
+        len (count cv)]
+    (loop [i 0] ;find from all productions of x the one that matches cv
+      (assert (< i n))
+      (let [p (pv i)]
+        (if (and (= (count p) len) ;if lengths don't match, don't bother; "next!"
+                 (loop [j 0]
+                   (if (= j len) true
+                       (let [a (cv j) b (p j)]
+                         (if (vector? a) ;has subtree or is a leaf node
+                           (if (= (a 0) b) (recur (inc j)) false)
+                           (if (= (:token a) b) (recur (inc j)) false))))))
+          {:nth i :children cv}
+          (recur (inc i)))))))
+
+(defn symtab-lookup [symtabv id]
+  (let [n (count symtabv)]
+    (loop [i (dec n)]
+      (if (= i -1)
+        nil
+        (let [r (get (symtabv i) id)]
+          (if r
+            r
+            (recur (dec i))))))))
 
 (comment
   :type-of-lvalue
@@ -362,6 +388,29 @@
   "  find the type of the leading :lvalue, go inside its symtab entry, find the :id, and return its type as result;"
   "- :lvalue :open-bracket :expr :close-bracket"
   "  find the type of the leading :lvalue, assure that its an array type, and go inside its symtab entry, return type of its elements as result.")
+
+(defn typeof-lvalue [var-tabs ty-tabs t]
+  (let [{i :nth cv :children} (match-prod t)]
+    (case i
+      0 ;[:id]
+      (symtab-lookup var-tabs (:name (cv 0)))
+      
+      1 ;[:lvalue :period :id]
+      (let [rec-type (typeof-lvalue var-tabs ty-tabs (cv 0))
+            rec-entry (symtab-lookup ty-tabs rec-type)
+            fieldv (:fields rec-entry)
+            n (count fieldv)
+            target (:name (cv 2))]
+        (loop [i 0]
+          (assert (< i n))
+          (let [{name :name ty :type} (fieldv i)]
+            (if (= name target) ty
+                (recur (inc i))))))
+      
+      2 ;[:lvalue :open-bracket :expr :close-bracket]
+      (let [arr-type (typeof-lvalue var-tabs ty-tabs (cv 0))
+            arr-entry (symtab-lookup ty-tabs arr-type)]
+        (:elem-type arr-entry)))))
 
 (comment
   :type-of-factor
