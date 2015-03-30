@@ -382,6 +382,17 @@
 
 (def semantic-env {:vtabs [] :ttabs []})
 
+(declare typeof-lvalue)
+(declare typeof-factor)
+(declare typeof-expr-seq)
+(declare typeof-term)
+(declare typeof-cmp-term)
+(declare typeof-and-term)
+(declare typeof-or-term)
+(declare typeof-arith)
+(declare typeof-val)
+(declare typeof-expr)
+
 (comment
   :type-of-lvalue
   "- :id"
@@ -605,17 +616,125 @@
   "  return type of the :expr-seq.")
 
 (defn typeof-expr [env t]
-  (let [{i :nth cv :children} (match-prod t)]
+  (let [record?
+        (fn [x] (not (nil? (:fields x))))
+
+        array?
+        (fn [x] (not (nil? (:elem-type x))))
+
+        function?
+        (fn [x] (not (nil? (:params x))))
+
+        get-type
+        (fn [env id]
+          (-> id
+              (symtab-lookup (:stabs env))
+              (symtab-lookup (:ttabs env))))
+
+        update-env
+        (fn [env decl-list]
+          ()) ;TODO
+
+        {i :nth cv :children} (match-prod t)]
     (case i
       0 ;[:val]
       (typeof-val env (cv 0))
 
-      (1 ;[:lvalue :assign :expr]
-       4 ;[:open-paren :close-paren]
-       11 ;[:break]
-       12) ;[:let :decl-list :in :end]
-      :type-noval
+      1 ;[:lvalue :assign :expr]
+      (let [ta (typeof-lvalue (cv 0))
+            tb (typeof-expr (cv 2))]
+        (assert (or (= ta tb)
+                    (and (= tb :type-nil) (record? ta))))
+        :type-none)
 
       2 ;[:id :open-paren :close-paren]
-      () 
+      (let [ta (get-type (:name (cv 0)))]
+        (assert (and (function? ta) (empty? (:params ta))))
+        (:ret-type ta))
+
+      3 ;[:id :open-paren :expr-list :close-paren]
+      (let [ta (get-type (:name (cv 0)))]
+        (assert
+         (and (function? ta)
+              (let [pv (:params ta)]
+                (loop [i (dec (count pv))
+                       av (cv 2)] ;:expr-list [[:expr] [:expr-list :comma :expr]]
+                  (assert (not (= i -1)))
+                  (let [childv (av 1)]
+                    (case (count childv)
+                      1 ;[:expr]
+                      (and (= i 0)
+                           (= (typeof-expr env (childv 0)) (pv 0)))
+                      
+                      3 ;[:expr-list :comma :expr]
+                      (if (= (typeof-expr env (childv 2)) (pv i))
+                        (recur (dec i) (childv 0))
+                        false)))))))
+        (:ret-type ta))
+
+      4 ;[:open-paren :close-paren]
+      :type-none
+
+      5 ;[:ty-id :open-brace :close-brace]
+      (let [ta (symtab-lookup (:ttabs env) (:name (cv 0)))]
+        (assert (and (record? ta) (empty? (:fields ta))))
+        (:id ta))
+
+      6 ;[:ty-id :open-brace :field-list :close-brace]
+      (let [ta (symtab-lookup (:ttabs env) (:name (cv 0)))]
+        (assert
+         (and (record? ta)
+              (let [fv (:fields ta) n (count fv)]
+                (loop [i (dec n)
+                       av (cv 2)]
+                  (assert (not (= i -1)))
+                  (let [childv (av 1)]
+                    (case (count childv)
+                      3 ;[:id :equal :expr]
+                      (and (= i 0)
+                           (let [{target-name :name target-type :type} (fv 0)]
+                             (and (= (:name (childv 0)) target-name)
+                                  (= (typeof-expr env (childv 2)) target-type))))
+
+                      5 ;[:field-list :comma :id :equal :expr]
+                      (let [{target-name :name target-type :type} (fv i)]
+                        (if (and (= (:name (childv 0)) target-name)
+                                 (= (typeof-expr env (childv 2)) target-type))
+                          (recur (dec i) (childv 0))
+                          false))
+                      ))))))
+        (:id ta))
+
+      7 ;[:ty-id :open-bracket :expr :close-bracket :of :expr]
+      (let [ta (symtab-lookup (:ttabs env) (cv 0))]
+        (assert
+         (and (array? ta)
+              (= (typeof-expr env (cv 2)) :type-int)
+              (= (typeof-expr env (cv 5)) (:elem-type ta))))
+        (:id ta))
+
+      8 ;[:if :expr :then :expr :if-tail]
+      (do (assert (= (typeof-expr env (cv 1)) :type-int))
+          (let [else ((cv 4) 1)]
+            (if (empty? else)
+              :type-none
+              (let [ta (typeof-expr env (cv 3))
+                    tb (typeof-expr env (else 1))]
+                (assert (= ta tb))
+                ta))))
+
+      9 ;[:while :expr :do :expr]
+      :type-none
+
+      10 ;[:for :id :assign :expr :to :expr :do :expr]
+      :type-none
+      
+      11 ;[:break] TODO :break may need special check
+      :type-none
+
+      12 ;[:let :decl-list :in :end]
+      :type-none
+
+      13 ;[:let :decl-list :in :expr-seq :end]
+      (typeof-expr-seq (update-env (cv 1)) (cv 3))
       )))
