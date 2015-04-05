@@ -1,6 +1,11 @@
 (ns semantics
   (:require [grammar :as gmr]))
 
+(defn var-symtab []
+  (fn [msg]
+    (case msg
+      :lookup (fn []))))
+
 (defn match-prod
   "return the matching production, and the matched vector of subtrees"
   [tree]

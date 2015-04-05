@@ -421,27 +421,29 @@
     (reduce for-states [] (:by-x ccc))))
 
 (defn slr-parser [g]
-  (let [g (augment-grammar g)
+  (let [g   (augment-grammar g)
         ccc (consolidate-cc (canonical-coll g))
-        init (let [it {:left aug-start :nth 0 :pos 0}
-                   v (:by-x ccc) n (count v)]
-               (loop [i 0]
-                 (if (= i n)
-                   (println "cannot find initial state from canonical collection")
-                   (if (contains? (v i) it)
-                     i (recur (inc i))))))
+
+        init ;the initial state
+        (let [it {:left aug-start :nth 0 :pos 0}
+              v (:by-x ccc) n (count v)]
+          (loop [i 0]
+            (if (= i n)
+              (println "cannot find initial state from canonical collection")
+              (if (contains? (v i) it)
+                i (recur (inc i))))))
 
         action-tab (slr-action-tab g ccc false)
         goto-tab (slr-goto-tab g ccc)
 
-        atab-helper ;get an entry from action table
+        atab-helper
         (fn [state term f]
           (let [r (get (action-tab state) term)]
             (if r r
                 ;;otherwise, try consuming an empty-string
                 (let [s (get (action-tab state) empty-string)]
                   (if s (f (:state s) term f))))))
-        atab
+        atab ;get an entry from action table
         (fn [state term] (atab-helper state term atab-helper))
         
         gtab ;get an entry from goto table
@@ -458,10 +460,10 @@
                        (inc i))))))
         ]
     (println "Initial state:" init ", i.e." (items-by-state ccc init))
-    (fn [token-v]
+    (fn [token-v trans-fn]
       (loop [ts (seq (conj token-v {:token end-marker})) ;token queue
-             ss [init]
-             treev []] ;state stack
+             ss [init] ;state stack
+             treev []] ;parse tree stack
         (if (empty? ts) ;not suppose to happen
           (do (println ss)  treev)
           (let [t (first ts) s (peek ss)
@@ -482,9 +484,9 @@
                          (conj ss (gtab (peek ss) nt)))
                        (let [n (count treev)
                              i (- n m)
-                             tree (conj [nt] (subvec treev i n))
+                             cv (subvec treev i n)
                              treev (subvec treev 0 i)]
-                         (conj treev tree))))
+                         (conj treev (trans-fn p cv)))))
 
               :accept
               (do (println "accepted; tokens left:" ts "; stack:" ss)
@@ -496,14 +498,13 @@
   ([t] (print-tree t 0))
   ([t nth] ;nth controls the amount of indentation
    (assert (vector? t))
-   (do (assert (not (vector? (t 0))))
-       (println (apply str (conj (repeat nth " ") nth)) (t 0))
-       (let [childv (t 1) n (count childv)
-             nth (inc nth)]
-         (loop [i 0]
-           (if (< i n)
-             (do (let [child (childv i)]
-                   (if (vector? child)
-                     (print-tree child nth)
-                     (println (apply str (conj (repeat nth " ") nth)) child)))
-                 (recur (inc i)))))))))
+   (println (apply str (conj (repeat nth " ") nth)) (t 0))
+   (let [childv (subvec t 1) n (count childv)
+         nth (inc nth)]
+     (loop [i 0]
+       (if (< i n)
+         (do (let [child (childv i)]
+               (if (vector? child)
+                 (print-tree child nth)
+                 (println (apply str (conj (repeat nth " ") nth)) child)))
+             (recur (inc i))))))))
