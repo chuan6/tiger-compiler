@@ -18,13 +18,13 @@
     [:empty]
     
     5 ; :ty-id :open-brace :close-brace
-    [:create-tmp :record (symbol (:name (cv 0)))]
+    [:create-tmp (symbol (:name (cv 0)))]
     
     6 ; :ty-id :open-brace :field-list :close-brace
-    [:create-tmp :record (symbol (:name (cv 0))) (cv 2)]
+    [:create-tmp (symbol (:name (cv 0))) (cv 2)]
 
     7 ; :ty-id :open-bracket :expr :close-bracket :of :expr
-    [:create-tmp :array (symbol (:name (cv 0))) (cv 2) (cv 5)]
+    [:create-tmp (symbol (:name (cv 0))) (cv 2) (cv 5)]
 
     8 ; :if :expr :then :expr :if-tail
     (let [else (cv 4)]
@@ -92,20 +92,20 @@
 
 (defn trans-and-term [nth cv]
   (case nth
-    0 [(cv 1) (cv 0) (cv 2)] ; :cmp-term :cmp :cmp-term
+    0 [:cmp (cv 1) (cv 0) (cv 2)] ; :cmp-term :cmp :cmp-term
     1 (cv 0) ; :cmp-term
     ))
 
 (defn trans-cmp-term [nth cv]
   (case nth
     0 [:string (:value (cv 0))] ; :string
-    1 [(cv 1) (cv 0) (cv 2)] ; :cmp-term :cal-0 :term
+    1 [:cal (cv 1) (cv 0) (cv 2)] ; :cmp-term :cal-0 :term
     2 (cv 0) ; :term
     ))
 
 (defn trans-term [nth cv]
   (case nth
-    0 [(cv 1) (cv 0) (cv 2)] ; :term :cal-1 :factor
+    0 [:cal (cv 1) (cv 0) (cv 2)] ; :term :cal-1 :factor
     1 (cv 0) ; :factor
     ))
 
@@ -151,7 +151,7 @@
   (case nth
     0 ; :decl
     (case ((cv 0) 0)
-      :ty-decl [[:consec-type-decl (cv 0)]]
+      :ty-decl [[:consec-ty-decl (cv 0)]]
       :var-decl cv
       :fn-decl [[:consec-fn-decl (cv 0)]])
     
@@ -161,7 +161,7 @@
       (if (= next-type :var-decl)
         (conj prev next)
         (case (curr 0)
-          :consec-type-decl
+          :consec-ty-decl
           (case (next 0)
             :ty-decl (conj (pop prev) (conj curr next))
             :fn-decl (conj prev [:consec-fn-decl next]))
@@ -217,13 +217,13 @@
 (defn trans-fn-decl [nth cv]
   (case nth
     0 ; :function :id :open-paren :close-paren :equal :expr
-    [:fn-decl false (symbol (:name (cv 1))) (cv 5)] ;false for no return
+    [:fn-decl true (symbol (:name (cv 1))) (cv 5)] ;true for no return
     1 ; :function :id :open-paren :ty-fields :close-paren :equal :expr
-    [:fn-decl false (symbol (:name (cv 1))) (cv 3) (cv 6)]
+    [:fn-decl true (symbol (:name (cv 1))) (cv 3) (cv 6)]
     2 ; :function :id :open-paren :close-paren :colon :ty-id :equal :expr
-    [:fn-decl true (symbol (:name (cv 1))) (symbol (:name (cv 5))) (cv 7)]
+    [:fn-decl false (symbol (:name (cv 1))) (symbol (:name (cv 5))) (cv 7)]
     3 ; :function :id :open-paren :ty-fields :close-paren :colon :ty-id :equal :expr
-    [:fn-decl true (symbol (:name (cv 1))) (cv 3) (symbol (:name (cv 6))) (cv 8)]
+    [:fn-decl false (symbol (:name (cv 1))) (cv 3) (symbol (:name (cv 6))) (cv 8)]
   ))
 
 ;;;transform concrete syntax tree to abstract syntax tree
