@@ -8,43 +8,37 @@
     1 ; :lvalue :assign :expr
     [:assign (cv 0) (cv 2)]
     
-    2 ; :id :open-paren :close-paren
-    [:call (symbol (:name (cv 0)))]
-    
-    3 ; :id :open-paren :expr-list :close-paren
-    [:call (symbol (:name (cv 0))) (cv 2)]
-    
-    4 ; :open-paren :close-paren
+    2 ; :open-paren :close-paren
     [:empty]
     
-    5 ; :ty-id :open-brace :close-brace
+    3 ; :ty-id :open-brace :close-brace
     [:create-tmp (symbol (:name (cv 0)))]
     
-    6 ; :ty-id :open-brace :field-list :close-brace
+    4 ; :ty-id :open-brace :field-list :close-brace
     [:create-tmp (symbol (:name (cv 0))) (cv 2)]
 
-    7 ; :ty-id :open-bracket :expr :close-bracket :of :expr
+    5 ; :ty-id :open-bracket :expr :close-bracket :of :expr
     [:create-tmp (symbol (:name (cv 0))) (cv 2) (cv 5)]
 
-    8 ; :if :expr :then :expr :if-tail
+    6 ; :if :expr :then :expr :if-tail
     (let [else (cv 4)]
       (if (nil? else)
         [:if (cv 1) (cv 3)]
         [:if (cv 1) (cv 3) else]))
 
-    9 ; :while :expr :do :expr
+    7 ; :while :expr :do :expr
     [:while (cv 1) (cv 3)]
 
-    10 ; :for :id :assign :expr :to :expr :do :expr
+    8 ; :for :id :assign :expr :to :expr :do :expr
     [:for (symbol (:name (cv 1))) (cv 3) (cv 5) (cv 7)]
 
-    11 ; :break
+    9 ; :break
     [:break] ;TODO need to ensure that the break is enclosed in a while/for expr
 
-    12 ; :let :decl-list :in :end
+    10 ; :let :decl-list :in :end
     [:let (cv 1)]
 
-    13 ; :let :decl-list :in :expr-seq :end
+    11 ; :let :decl-list :in :expr-seq :end
     [:let (cv 1) (cv 3)]))
 
 (defn trans-if-tail [nth cv]
@@ -115,6 +109,11 @@
     1 [:nil] ; :nil
     2 (cv 0) ; :lvalue
     3 (cv 1) ; :open-paren :expr-seq :close-paren
+    4 ; :id :open-paren :close-paren
+    [:call (symbol (:name (cv 0)))]
+    
+    5 ; :id :open-paren :expr-list :close-paren
+    [:call (symbol (:name (cv 0))) (cv 2)]
     ))
 
 (defn trans-cmp [nth cv]

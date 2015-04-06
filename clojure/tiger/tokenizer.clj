@@ -226,6 +226,7 @@
     "- :id that immediately follows :array :of is :ty-id;"
     "- :id that immediately follows :equal, which in turn,"
     "  immediately follows :type :ty-id is :ty-id;"
+    "- :id that is immediately followed by { is :ty-id"
     "- :id that is immediately followed by [...] :of is :ty-id.")
   (let [v (transient token-v)
         n (count v)
@@ -247,6 +248,12 @@
                   (if (= (:token (v j)) (sequence k))
                     (recur (inc j) (inc k))
                     false))))))
+
+        followed-by-open-brace?
+        (fn [i]
+          (assert (= (:token (v i)) :id))
+          (let [j (inc i)]
+            (and (< j n) (= (:token (v j)) :open-brace))))
 
         followed-by-brackets-then-of?
         (fn [i]
@@ -278,6 +285,7 @@
                        (follows? i seq-2)
                        (follows? i seq-3)
                        (follows? i seq-4)
+                       (followed-by-open-brace? i)
                        (followed-by-brackets-then-of? i)))
             (recur (inc i) (assoc! v i {:token :ty-id :name (:name vi)}))
             (recur (inc i) v)))))))

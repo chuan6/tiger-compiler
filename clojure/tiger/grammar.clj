@@ -18,8 +18,7 @@
    :productions
    {:expr [[:val]
            [:lvalue :assign :expr]
-           [:id :open-paren :close-paren]
-           [:id :open-paren :expr-list :close-paren]
+
            [:open-paren :close-paren]
            [:ty-id :open-brace :close-brace]
            [:ty-id :open-brace :field-list :close-brace]
@@ -42,7 +41,9 @@
     :cmp-term [[:string] [:cmp-term :cal-0 :term] [:term]]
     :term [[:term :cal-1 :factor] [:factor]]
     :factor [[:digits] [:nil] [:lvalue]
-             [:open-paren :expr-seq :close-paren]]
+             [:open-paren :expr-seq :close-paren]
+             [:id :open-paren :close-paren]
+             [:id :open-paren :expr-list :close-paren]]
     :cmp [[:equal] [:lt] [:gt] [:leq] [:geq] [:diamond]]
     :cal-0 [[:plus] [:minus]]
     :cal-1 [[:star] [:slash]]

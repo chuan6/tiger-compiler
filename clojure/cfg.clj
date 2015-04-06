@@ -458,41 +458,46 @@
                 c
                 (recur (if (= (pv i) empty-string) c (inc c))
                        (inc i))))))
+
+        default-trans
+        (fn [p cv] (conj [(:left p)] cv))
         ]
     (println "Initial state:" init ", i.e." (items-by-state ccc init))
-    (fn [token-v trans-fn]
-      (loop [ts (seq (conj token-v {:token end-marker})) ;token queue
-             ss [init] ;state stack
-             treev []] ;parse tree stack
-        (if (empty? ts) ;not suppose to happen
-          (do (println ss)  treev)
-          (let [t (first ts) s (peek ss)
-                a (atab s (:token t))]
-            (case (:action a)
-              :shift
-              (do ;;(println a)
-                  (recur (rest ts) (conj ss (:state a))
-                         (conj treev t)))
+    (fn parse
+      ([token-v] (parse token-v default-trans))
+      ([token-v trans-fn]
+       (loop [ts (seq (conj token-v {:token end-marker})) ;token queue
+              ss [init] ;state stack
+              treev []] ;parse tree stack
+         (if (empty? ts) ;not suppose to happen
+           (do (println ss)  treev)
+           (let [t (first ts) s (peek ss)
+                 a (atab s (:token t))]
+             (case (:action a)
+               :shift
+               (do ;;(println a)
+                 (recur (rest ts) (conj ss (:state a))
+                        (conj treev t)))
 
-              :reduce
-              (let [p (:production a)
-                    m (prod-len p)
-                    nt (:left p)]
-                (recur ts
-                       (let [n (count ss)
-                             ss (subvec ss 0 (- n m))]
-                         (conj ss (gtab (peek ss) nt)))
-                       (let [n (count treev)
-                             i (- n m)
-                             cv (subvec treev i n)
-                             treev (subvec treev 0 i)]
-                         (conj treev (trans-fn p cv)))))
+               :reduce
+               (let [p (:production a)
+                     m (prod-len p)
+                     nt (:left p)]
+                 (recur ts
+                        (let [n (count ss)
+                              ss (subvec ss 0 (- n m))]
+                          (conj ss (gtab (peek ss) nt)))
+                        (let [n (count treev)
+                              i (- n m)
+                              cv (subvec treev i n)
+                              treev (subvec treev 0 i)]
+                          (conj treev (trans-fn p cv)))))
 
-              :accept
-              (do (println "accepted; tokens left:" ts "; stack:" ss)
-                  (treev 0))
+               :accept
+               (do (println "accepted; tokens left:" ts "; stack:" ss)
+                   (treev 0))
 
-              (println "hit nil entry:" t "at" s))))))))
+               (println "hit nil entry:" t "at" s "tree" treev)))))))))
 
 (defn print-tree
   ([t] (print-tree t 0))
