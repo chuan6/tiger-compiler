@@ -79,6 +79,18 @@ to a variable of the original type.
          ty-env (conj ty-env ty-env')]
      (typeof-expr-seq env ty-env expr-))))
 
+(defn type-check [node]
+  (let [expr-set #{:assign :empty :create-tmp :if
+                   :while :for :let :lvalue :exprs
+                   :neg :or :and :cmp :string :cal :int
+                   :nil :call :assign-fields}
+        decl-set #{:ty-decl :var-decl :fn-decl
+                   :consec-ty-decl :consec-fn-decl
+                   :create-ty :ty-assoc}
+        label (node 0)]
+    (cond
+      (expr-set label) ())))
+
 (defn type-of [node]
   (case (node 0)
     :assign

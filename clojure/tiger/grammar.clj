@@ -18,7 +18,6 @@
    :productions
    {:expr [[:val]
            [:lvalue :assign :expr]
-
            [:open-paren :close-paren]
            [:ty-id :open-brace :close-brace]
            [:ty-id :open-brace :field-list :close-brace]
@@ -34,7 +33,7 @@
              [:lvalue :open-bracket :expr :close-bracket]]
     :expr-list [[:expr] [:expr-list :comma :expr]]
     :expr-seq [[:expr] [:expr-seq :semi-colon :expr]]
-    :val [[:minus :val] [:arith]]
+    :val [[:minus :arith] [:arith]]
     :arith [[:arith :pipe :or-term] [:or-term]]
     :or-term [[:or-term :and :and-term] [:and-term]]
     :and-term [[:cmp-term :cmp :cmp-term] [:cmp-term]]
