@@ -125,7 +125,7 @@
 
 (defn trans-ty-field [nth cv]
   (case nth
-    0 [:ty-assoc (symbol (:name (cv 0))) (symbol (:name (cv 2)))]))
+    0 [(symbol (:name (cv 0))) (symbol (:name (cv 2)))]))
 
 (defn trans-var-decl [nth cv]
   (case nth
