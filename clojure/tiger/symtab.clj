@@ -22,5 +22,5 @@
   (let [stack (get env namespace)
         top   (peek stack)]
     (assoc env namespace
-           (conj (pop stack)
+           (conj ()
                  (assoc top sym entity)))))
