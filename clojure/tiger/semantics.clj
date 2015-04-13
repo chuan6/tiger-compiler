@@ -37,9 +37,11 @@
   (let [entity (apply doit env texpr)]
     (symtab/create-an-entry env :ty-id tid entity)))
 
-(defn do-consec-ty-decl [env & args]
+(defn do-consec-ty-decl
+  "form a new nested scope for this consecutive sequence of ty-decl's"
+  [env & args]
   (let [declv (first args), n (count declv)]
-    (let [env (loop [r env
+    (let [env (loop [r (symtab/nest-scope env :ty-id)
                      f false
                      s #{}
                      i 0] ;first pass, collecting headers
@@ -57,7 +59,6 @@
           r
           (recur (apply doit r (declv i)) (inc i)))))))
 
-;;;TBD why does re-declaration exist? implement it or not?
 
 (defn doit [env & args]
   (case (first args)

@@ -24,3 +24,10 @@
     (assoc env namespace
            (conj (pop stack)
                  (assoc top sym entity)))))
+
+(defn nest-scope
+  "create a empty nested scope for given namespace at given env"
+  [env namespace]
+  (assert (#{:ty-id :id} namespace))
+  (assoc env namespace
+         (conj (get env namespace) {})))
