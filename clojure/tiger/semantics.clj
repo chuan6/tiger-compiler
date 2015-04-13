@@ -50,8 +50,7 @@
                           (assoc asv iy (conj as x)))
               (= iy -1) (let [as (asv ix)]
                           (assoc asv ix (conj as y)))
-              (= ix iy) (do (println "Error: redundant alias type declaration found")
-                            asv)
+              (= ix iy) nil
               :else (loop [asv' [(clojure.set/union (asv ix) (asv iy))]
                            i 1]
                       (if (= i n)
@@ -64,8 +63,11 @@
                (if (and (= iy -1) ((asv i) y)) i iy))))))
 
 (defn do-ty-decl [env tid texpr]
-  (let [entity (apply doit env texpr)]
-    (symtab/create-an-entry env :ty-id tid entity)))
+  (let [entity (apply doit env texpr)
+        tmp' (detect-cyclic-aliasing (:tmp env) tid (:orig-type entity))]
+    (assert tmp' "found cyclic type aliasing in current consec-ty-decl")
+    (-> (assoc env :tmp tmp')
+        (symtab/create-an-entry :ty-id tid entity))))
 
 (defn do-consec-ty-decl
   "form a new nested scope for this consecutive sequence of ty-decl's"
@@ -84,9 +86,10 @@
                            (or f (contains? s ty-name))
                            (conj s ty-name)
                            (inc i)))))]
-      (loop [r env, i 0] ;second pass, appending bodies
+      (loop [r (assoc env :tmp [])
+             i 0] ;second pass, appending bodies
         (if (= i n)
-          r
+          (dissoc r :tmp)
           (recur (apply doit r (declv i)) (inc i)))))))
 
 
