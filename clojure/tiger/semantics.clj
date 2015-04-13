@@ -33,6 +33,36 @@
               (str "array element type " et " is not defined"))
       {:kind :array :elem-type et})))
 
+(defn detect-cyclic-aliasing [alias-set-vec x y]
+  ;;all sets in alias-set-vec should be exclusive
+  ;;example:
+  ;; > (-> [] (f 'a 'b) (f 'b 'd) (f 'c 'a) (f 'd 'a))
+  ;; Error: redundant alias type declaration found
+  ;; [#{a c b d}]
+  (let [asv alias-set-vec
+        n (count asv)]
+    (loop [i 0
+           ix -1
+           iy -1]
+      (if (= i n)
+        (cond (= ix iy -1) (conj asv #{x y})
+              (= ix -1) (let [as (asv iy)]
+                          (assoc asv iy (conj as x)))
+              (= iy -1) (let [as (asv ix)]
+                          (assoc asv ix (conj as y)))
+              (= ix iy) (do (println "Error: redundant alias type declaration found")
+                            asv)
+              :else (loop [asv' [(clojure.set/union (asv ix) (asv iy))]
+                           i 1]
+                      (if (= i n)
+                        asv'
+                        (if (or (= i ix) (= i iy))
+                          (recur asv' (inc i))
+                          (recur (conj asv' (asv i)) (inc i))))))
+        (recur (inc i)
+               (if (and (= ix -1) ((asv i) x)) i ix)
+               (if (and (= iy -1) ((asv i) y)) i iy))))))
+
 (defn do-ty-decl [env tid texpr]
   (let [entity (apply doit env texpr)]
     (symtab/create-an-entry env :ty-id tid entity)))
