@@ -25,6 +25,21 @@
            (conj (pop stack)
                  (assoc top sym entity)))))
 
+(defn update-at-curr-scope
+  "introduce or update a property of entity of an existing entry"
+  [env namespace sym property value]
+  (assert (and (#{:ty-id :id} namespace)
+               (symbol? sym)))
+  (let [stack (get env namespace)
+        top   (peek stack)
+        entry (find top sym)]
+    (assert (not (nil? entry)))
+    (->> value
+         (assoc (val entry) property)
+         (assoc top sym)
+         (conj (pop stack))
+         (assoc env namespace))))
+
 (defn nest-scope
   "create a empty nested scope for given namespace at given env"
   [env namespace]

@@ -33,12 +33,66 @@
               (str "array element type " et " is not defined"))
       {:kind :array :elem-type et})))
 
-(defn detect-cyclic-aliasing [alias-set-vec x y]
-  ;;all sets in alias-set-vec should be exclusive
-  ;;example:
-  ;; > (-> [] (f 'a 'b) (f 'b 'd) (f 'c 'a) (f 'd 'a))
-  ;; Error: redundant alias type declaration found
-  ;; [#{a c b d}]
+(declare detect-redundant-ty-alias)
+(defn do-ty-decl [env tid texpr]
+  (let [entity (apply doit env texpr)]
+    (->
+     (if (= (:kind entity) :alias)
+       (let [tmp (detect-redundant-ty-alias
+                   (:alias-set-coll env) tid (:orig-type entity))]
+         (assert tmp "found redundant type aliasing in current consec-ty-decl")
+         (assoc env :alias-set-coll tmp))
+       env)
+     (symtab/create-an-entry :ty-id tid entity))))
+
+(declare consec-ty-decl-1st-pass
+         consec-ty-decl-2nd-pass
+         consec-ty-decl-3rd-pass)
+(defn do-consec-ty-decl
+  "form a new nested scope for this consecutive sequence of ty-decl's"
+  [env & args]
+  (let [declv (first args)]
+    (-> env
+        (consec-ty-decl-1st-pass declv)
+        (consec-ty-decl-2nd-pass declv)
+        (consec-ty-decl-3rd-pass))))
+
+(defn do-var-decl
+  ([env var expr]
+   (let [et (apply doit env expr)]
+     (assert (not (= (:kind et) :void)))
+     (symtab/create-an-entry env :id var et)))
+  ([env var type expr]))
+
+(defn doit [env & args]
+  (case (first args)
+    :create-ty (apply do-create-ty env (rest args))
+    :ty-decl (apply do-ty-decl env (rest args))
+    :consec-ty-decl (apply do-consec-ty-decl env (rest args))))
+
+(defn consec-ty-decl-1st-pass
+  "introduce headers of type declarations to symbol table"
+  [env decl-vec]
+  (let [n (count decl-vec)]
+    (loop [env (symtab/nest-scope env :ty-id)
+           flag false, s #{} ;check for duplicated headers
+           i 0]
+      (if (= i n)
+        (do (assert (= flag false)
+                    "duplicate type names declared in consec-ty-decl")
+            env)
+        (let [ty-name ((decl-vec i) 1)]
+          (recur (symtab/create-an-entry env :ty-id ty-name :undefined)
+                 (or flag (contains? s ty-name))
+                 (conj s ty-name)
+                 (inc i)))))))
+
+;;all sets in alias-set-vec should be exclusive
+;;example:
+;; > (-> [] (f 'a 'b) (f 'b 'd) (f 'c 'a) (f 'd 'a))
+;; Error: redundant alias type declaration found
+;; [#{a c b d}]
+(defn detect-redundant-ty-alias [alias-set-vec x y]
   (let [asv alias-set-vec
         n (count asv)]
     (loop [i 0
@@ -62,38 +116,28 @@
                (if (and (= ix -1) ((asv i) x)) i ix)
                (if (and (= iy -1) ((asv i) y)) i iy))))))
 
-(defn do-ty-decl [env tid texpr]
-  (let [entity (apply doit env texpr)
-        tmp' (detect-cyclic-aliasing (:tmp env) tid (:orig-type entity))]
-    (assert tmp' "found cyclic type aliasing in current consec-ty-decl")
-    (-> (assoc env :tmp tmp')
-        (symtab/create-an-entry :ty-id tid entity))))
+(defn consec-ty-decl-2nd-pass
+  "appending bodies to corresponding headers that are already in table"
+  [env decl-vec]
+  (let [n (count decl-vec)]
+    (loop [env (assoc env :alias-set-coll [])
+           i 0]
+      (if (= i n) env
+          (recur (apply doit env (decl-vec i))
+                 (inc i))))))
 
-(defn do-consec-ty-decl
-  "form a new nested scope for this consecutive sequence of ty-decl's"
-  [env & args]
-  (let [declv (first args), n (count declv)]
-    (let [env (loop [r (symtab/nest-scope env :ty-id)
-                     f false
-                     s #{}
-                     i 0] ;first pass, collecting headers
-                (if (= i n)
-                  (do (assert (not f)
-                              "type names in consec-ty-decl are not unique")
-                      r)
-                  (let [ty-name ((declv i) 1)]
-                    (recur (symtab/create-an-entry r :ty-id ty-name :undefined)
-                           (or f (contains? s ty-name))
-                           (conj s ty-name)
-                           (inc i)))))]
-      (loop [r (assoc env :tmp [])
-             i 0] ;second pass, appending bodies
-        (if (= i n)
-          (dissoc r :tmp)
-          (recur (apply doit r (declv i)) (inc i)))))))
-
-
-(defn doit [env & args]
-  (case (first args)
-    :create-ty (apply do-create-ty env (rest args))
-    :ty-decl (apply do-ty-decl env (rest args))))
+(defn consec-ty-decl-3rd-pass
+  "utilize (:alias-set-coll env), and then drop it from env"
+  [env]
+  (let [ascoll (:alias-set-coll env)]
+    (assert (not (nil? ascoll)))
+    (loop [env env, ascoll (seq ascoll)]
+      (if (empty? ascoll)
+        (dissoc env :alias-set-coll)
+        (recur (let [aset (first ascoll)]
+                 (loop [env env, as (seq aset)]
+                   (if (empty? as) env
+                       (recur (symtab/update-at-curr-scope
+                               env :ty-id (first as) :equiv-set aset)
+                              (rest as)))))
+               (rest ascoll))))))
