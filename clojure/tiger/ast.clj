@@ -111,14 +111,14 @@
 
 (defn trans-ty-decl [nth cv]
   (case nth
-    0 [:ty-decl (symbol (:name (cv 1))) (cv 3)]))
+    0 [:ty-decl, (symbol (:name (cv 1))), (cv 3)]))
 
 (defn trans-ty [nth cv]
   (case nth
-    0 [:create-ty :alias (symbol (:name (cv 0)))]
-    1 [:create-ty :record []]
-    2 [:create-ty :record (cv 1)]
-    3 [:create-ty :array (symbol (:name (cv 2)))]))
+    0 [:alias  (symbol (:name (cv 0)))]
+    1 [:record []]
+    2 [:record (cv 1)]
+    3 [:array  (symbol (:name (cv 2)))]))
 
 (defn trans-ty-fields [nth cv]
   (case nth 0 cv 1 (conj (cv 0) (cv 2))))

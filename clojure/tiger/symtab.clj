@@ -11,9 +11,6 @@
           true
           (recur (pop s) (inc i)))))))
 
-(defn type-in-current-scope?
-  [env x] true)
-
 (defn create-an-entry
   "create an entry at current scope for given namespace (:ty-id or :id), and return updated env"
   [env namespace sym entity]

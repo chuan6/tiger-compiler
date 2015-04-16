@@ -2,44 +2,17 @@
 
 (declare doit)
 
-(defn do-create-ty [env kind & args]
-  (case kind
-    :alias
-    (let [ot (first args)] ;the symbol for original type
-      (assert (symtab/type-in-scope? env ot)
-              (str "aliased original type " ot " is not defined"))
-      {:kind :alias :orig-type ot})
-    
-    :record
-    (let [xv (first args), n (count xv)]
-      (loop [yv []
-             f  false
-             s  #{}
-             i  0]
-        (if (= i n)
-          (do (assert (not f) "field names are not unique")
-              {:kind :record :fields yv})
-          (let [x (xv i), xa (x 0), xb (x 1)]
-            (assert (symtab/type-in-scope? env xb)
-                    (str "field type " xb " is not defined"))
-            (recur (conj yv {:name xa :type xb})
-                   (or f (contains? s xa))
-                   (conj s xa)
-                   (inc i))))))
+(declare create-ty
+         detect-redundant-ty-alias)
 
-    :array
-    (let [et (first args)] ;the symbol for element type
-      (assert (symtab/type-in-scope? env et)
-              (str "array element type " et " is not defined"))
-      {:kind :array :elem-type et})))
-
-(declare detect-redundant-ty-alias)
 (defn do-ty-decl [env tid texpr]
-  (let [entity (apply doit env texpr)]
+  (let [entity (create-ty env tid texpr)]
     (->
-     (if (= (:kind entity) :alias)
+     (if (type/alias? entity)
        (let [tmp (detect-redundant-ty-alias
-                   (:alias-set-coll env) tid (:orig-type entity))]
+                  (:alias-set-coll env)
+                  (type/id entity)
+                  (type/alias-origin entity))]
          (assert tmp "found redundant type aliasing in current consec-ty-decl")
          (assoc env :alias-set-coll tmp))
        env)
@@ -48,6 +21,7 @@
 (declare consec-ty-decl-1st-pass
          consec-ty-decl-2nd-pass
          consec-ty-decl-3rd-pass)
+
 (defn do-consec-ty-decl
   "form a new nested scope for this consecutive sequence of ty-decl's"
   [env & args]
@@ -60,32 +34,46 @@
 (defn do-var-decl
   ([env var expr]
    (let [et (apply doit env expr)]
-     (assert (not (= (:kind et) :void)))
+     (assert (not (type/void? et)))
      (symtab/create-an-entry env :id var et)))
   ([env var type expr]))
 
 (defn doit [env & args]
   (case (first args)
-    :create-ty (apply do-create-ty env (rest args))
     :ty-decl (apply do-ty-decl env (rest args))
     :consec-ty-decl (apply do-consec-ty-decl env (rest args))))
 
-(defn consec-ty-decl-1st-pass
-  "introduce headers of type declarations to symbol table"
-  [env decl-vec]
-  (let [n (count decl-vec)]
-    (loop [env (symtab/nest-scope env :ty-id)
-           flag false, s #{} ;check for duplicated headers
-           i 0]
-      (if (= i n)
-        (do (assert (= flag false)
-                    "duplicate type names declared in consec-ty-decl")
-            env)
-        (let [ty-name ((decl-vec i) 1)]
-          (recur (symtab/create-an-entry env :ty-id ty-name :undefined)
-                 (or flag (contains? s ty-name))
-                 (conj s ty-name)
-                 (inc i)))))))
+(defn create-ty [env id expr]
+  (let [arg (expr 1)]
+    (case (expr 0)
+      :alias
+      (let [ot arg] ;the symbol for original type
+        (assert (symtab/type-in-scope? env ot)
+                (str "aliased original type " ot " is not defined"))
+        (type/alias id ot))
+      
+      :record
+      (let [xv arg, n (count xv)]
+        (loop [yv []
+               f  false
+               s  #{}
+               i  0]
+          (if (= i n)
+            (do (assert (not f) "field names are not unique")
+                (type/record id yv))
+            (let [x (xv i), xa (x 0), xb (x 1)]
+              (assert (symtab/type-in-scope? env xb)
+                      (str "field type " xb " is not defined"))
+              (recur (conj yv {:name xa :type xb})
+                     (or f (contains? s xa))
+                     (conj s xa)
+                     (inc i))))))
+
+      :array
+      (let [et arg] ;the symbol for element type
+        (assert (symtab/type-in-scope? env et)
+                (str "array element type " et " is not defined"))
+        (type/array id et)))))
 
 ;;all sets in alias-set-vec should be exclusive
 ;;example:
@@ -115,6 +103,23 @@
         (recur (inc i)
                (if (and (= ix -1) ((asv i) x)) i ix)
                (if (and (= iy -1) ((asv i) y)) i iy))))))
+
+(defn consec-ty-decl-1st-pass
+  "introduce headers of type declarations to symbol table"
+  [env decl-vec]
+  (let [n (count decl-vec)]
+    (loop [env (symtab/nest-scope env :ty-id)
+           flag false, s #{} ;check for duplicated headers
+           i 0]
+      (if (= i n)
+        (do (assert (= flag false)
+                    "duplicate type names declared in consec-ty-decl")
+            env)
+        (let [ty-name ((decl-vec i) 1)]
+          (recur (symtab/create-an-entry env :ty-id ty-name :undefined)
+                 (or flag (contains? s ty-name))
+                 (conj s ty-name)
+                 (inc i)))))))
 
 (defn consec-ty-decl-2nd-pass
   "appending bodies to corresponding headers that are already in table"
