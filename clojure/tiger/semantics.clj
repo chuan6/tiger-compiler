@@ -1,148 +1,179 @@
 (ns semantics)
 
-(declare doit)
+(def empty-env {:ty-id [] :id []})
+(def empty-scope {:ty-id {} :id {}})
 
-(declare create-ty
-         detect-redundant-ty-alias)
+(defn push-scope
+  "nest a scope, and return updated env"
+  [env scope]
+  (let [{id-stack :id ty-id-stack :ty-id} env
+        {id-scope :id ty-id-scope :ty-id} scope]
+    {:id    (conj id-stack id-scope)
+     :ty-id (conj ty-id-stack ty-id-scope)}))
 
-(defn do-ty-decl [env tid texpr]
-  (let [entity (create-ty env tid texpr)]
-    (->
-     (if (type/alias? entity)
-       (let [tmp (detect-redundant-ty-alias
-                  (:alias-set-coll env)
-                  (type/id entity)
-                  (type/alias-origin entity))]
-         (assert tmp "found redundant type aliasing in current consec-ty-decl")
-         (assoc env :alias-set-coll tmp))
-       env)
-     (symtab/create-an-entry :ty-id tid entity))))
+(defn pop-scope
+  "leave innermost scope, and return updated env"
+  [env]
+  (let [{id-stack :id ty-id-stack :ty-id} env]
+    (assert (= (count id-stack) (count ty-id-stack)))
+    (if (empty? id-stack)
+      env
+      {:id (pop id-stack) :ty-id (pop ty-id-stack)})))
 
-(declare consec-ty-decl-1st-pass
-         consec-ty-decl-2nd-pass
-         consec-ty-decl-3rd-pass)
+(defn peek-scope
+  "get the innermost scope"
+  [env]
+  (let [{id-stack :id ty-id-stack :ty-id} env]
+    (assert (= (count id-stack) (count ty-id-stack)))
+    (if (empty? id-stack)
+      nil
+      {:id (peek id-stack) :ty-id (peek ty-id-stack)})))
 
-(defn do-consec-ty-decl
-  "form a new nested scope for this consecutive sequence of ty-decl's"
-  [env & args]
-  (let [declv (first args)]
-    (-> env
-        (consec-ty-decl-1st-pass declv)
-        (consec-ty-decl-2nd-pass declv)
-        (consec-ty-decl-3rd-pass))))
+(defn assoc-id
+  "assoc an id entry, and return updated scope"
+  [scope k v] (assoc scope :id (assoc (:id scope) k v)))
 
-(defn do-var-decl
-  ([env var expr]
-   (let [et (apply doit env expr)]
-     (assert (not (type/void? et)))
-     (symtab/create-an-entry env :id var et)))
-  ([env var type expr]))
+(defn assoc-ty-id
+  "assoc a ty-id entry, and return updated scope"
+  [scope k v] (assoc scope :ty-id (assoc (:ty-id scope) k v)))
+
+(defn lookup-id
+  "find the id entry in the innermost scope, return its entity and env"
+  [env id]
+  (loop [env env]
+    (let [top (peek-scope env)]
+      (if (nil? top)
+        nil ;"no such id"
+        (let [entity (get (:id top) id)]
+          (if entity
+            {:result entity :environment env}
+            (recur (pop-scope env))))))))
+
+(defn lookup-ty-id
+  "find the ty-id entry in the innermost scope, return its entity and env"
+  [env ty-id]
+  (loop [env env]
+    (let [top (peek-scope env)]
+      (if (nil? top)
+        nil ;"no such ty-id"
+        (let [entity (get (:ty-id top) ty-id)]
+          (if entity
+            {:result entity :environment env}
+            (recur (pop-scope env))))))))
+
+(defn consec-ty-decl-1st-pass
+  "add headers to scope"
+  [env decl-vec]
+  (loop [scope empty-scope
+         ds (seq decl-vec)
+         s #{}]
+    (if (empty? ds)
+      (push-scope env scope)
+      (let [[label header] (first ds)]
+        (assert (= label :ty-decl))
+        (assert (not (contains? s header)))
+        (recur (assoc-ty-id scope header :undefined)
+               (rest ds)
+               (conj s header))))))
+
+(defn do-ty-fields
+  "return a vector of type field entities"
+  [env fv]
+  (loop [fs (seq fv) fv [] s #{}]
+    (if (empty? fs) fv
+        (let [[name type] (first fs)]
+          (assert (lookup-ty-id env type))
+          (assert (not (contains? s name)))
+          (recur (rest fs)
+                 (conj fv {:name name :type type})
+                 (conj s name))))))
+
+;;e.g. (-> [] (f 'a 'b) (f 'b 'd) (f 'c 'a) (f 'd 'a))
+;;will return nil because there is redundant alias declartion
+(defn collect-alias-sets [asv x y]
+  (let [n (count asv)]
+    (loop [i 0 ix -1 iy -1]
+      (if (= i n)
+        (cond
+          (= ix iy -1) (conj asv #{x y})
+          (= ix -1)    (assoc asv iy (conj (asv iy) x))
+          (= iy -1)    (assoc asv ix (conj (asv ix) y))
+          (= ix iy)    nil ;redundant alias declaration is found
+          :merge-sets  (loop [asv' [(clojure.set/union
+                                           (asv ix) (asv iy))]
+                              i 0]
+                         (if (= i n) asv'
+                             (if (or (= i ix) (= i iy))
+                               (recur asv' (inc i)) ;skip
+                               (recur (conj asv' (asv i)) (inc i))))))
+        (let [aset (asv i)]
+          (recur (inc i)
+                 (if (aset x)
+                   (do (assert (= ix -1)) i) ;x can only be found in one set
+                   ix)
+                 (if (aset y)
+                   (do (assert (= iy -1)) i) ;y can only be found in one set
+                   iy)))))))
+
+(defn consec-ty-decl-2nd-pass
+  "assoc bodies to headers in the scope, and collect alias-set-coll"
+  [env decl-vec]
+  (loop [scope (peek-scope env)
+         asv   []
+         ds    (seq decl-vec)]
+    (if (empty? ds)
+      (-> (pop-scope env) (push-scope scope)
+          (assoc :alias-set-coll asv))
+      (let [[label header body] (first ds)]
+        (assert (= label :ty-decl))
+        (assert (get (:ty-id scope) header))
+        (let [[kind ty] body]
+          (case kind
+            :alias
+            (let [orig-t ty]
+              (assert (lookup-ty-id env orig-t))
+              (let [asv (collect-alias-sets asv header orig-t)]
+                (assert asv "redundant alias declaration is found")
+                (recur (assoc-ty-id scope header (type/alias orig-t))
+                       asv (rest ds))))
+
+            :array
+            (let [elem-t ty]
+              (assert (lookup-ty-id env elem-t))
+              (recur (assoc-ty-id scope header (type/array elem-t))
+                     asv (rest ds)))
+
+            :record
+            (let [fv ty]
+              (recur (assoc-ty-id scope header
+                                  (type/record (do-ty-fields env fv)))
+                     asv (rest ds)))))))))
+
+(defn update-a-ty-id-entry [env id k v]
+  (loop [s env
+         t empty-env]
+    (let [scope (peek-scope s)]
+      (if (nil? scope)
+        env
+        (let [entity (get (:ty-id scope) id)]
+          (if (nil? entity)
+            (recur (pop-scope s)
+                   (push-scope t scope))
+            (let [scope (assoc-ty-id scope
+                                     id
+                                     (assoc entity k v))]
+              (loop [r (-> (pop-scope s) (push-scope scope))
+                     t t]
+                (let [scope (peek-scope t)]
+                  (if (nil? scope)
+                    r
+                    (recur (push-scope r scope)
+                           (pop-scope t))))))))))))
+
+(defn do-consec-ty-decl [env & args]
+  (let [dv (first args)]))
 
 (defn doit [env & args]
   (case (first args)
-    :ty-decl (apply do-ty-decl env (rest args))
     :consec-ty-decl (apply do-consec-ty-decl env (rest args))))
 
-(defn create-ty [env id expr]
-  (let [arg (expr 1)]
-    (case (expr 0)
-      :alias
-      (let [ot arg] ;the symbol for original type
-        (assert (symtab/type-in-scope? env ot)
-                (str "aliased original type " ot " is not defined"))
-        (type/alias id ot))
-      
-      :record
-      (let [xv arg, n (count xv)]
-        (loop [yv []
-               f  false
-               s  #{}
-               i  0]
-          (if (= i n)
-            (do (assert (not f) "field names are not unique")
-                (type/record id yv))
-            (let [x (xv i), xa (x 0), xb (x 1)]
-              (assert (symtab/type-in-scope? env xb)
-                      (str "field type " xb " is not defined"))
-              (recur (conj yv {:name xa :type xb})
-                     (or f (contains? s xa))
-                     (conj s xa)
-                     (inc i))))))
-
-      :array
-      (let [et arg] ;the symbol for element type
-        (assert (symtab/type-in-scope? env et)
-                (str "array element type " et " is not defined"))
-        (type/array id et)))))
-
-;;all sets in alias-set-vec should be exclusive
-;;example:
-;; > (-> [] (f 'a 'b) (f 'b 'd) (f 'c 'a) (f 'd 'a))
-;; Error: redundant alias type declaration found
-;; [#{a c b d}]
-(defn detect-redundant-ty-alias [alias-set-vec x y]
-  (let [asv alias-set-vec
-        n (count asv)]
-    (loop [i 0
-           ix -1
-           iy -1]
-      (if (= i n)
-        (cond (= ix iy -1) (conj asv #{x y})
-              (= ix -1) (let [as (asv iy)]
-                          (assoc asv iy (conj as x)))
-              (= iy -1) (let [as (asv ix)]
-                          (assoc asv ix (conj as y)))
-              (= ix iy) nil
-              :else (loop [asv' [(clojure.set/union (asv ix) (asv iy))]
-                           i 1]
-                      (if (= i n)
-                        asv'
-                        (if (or (= i ix) (= i iy))
-                          (recur asv' (inc i))
-                          (recur (conj asv' (asv i)) (inc i))))))
-        (recur (inc i)
-               (if (and (= ix -1) ((asv i) x)) i ix)
-               (if (and (= iy -1) ((asv i) y)) i iy))))))
-
-(defn consec-ty-decl-1st-pass
-  "introduce headers of type declarations to symbol table"
-  [env decl-vec]
-  (let [n (count decl-vec)]
-    (loop [env (symtab/nest-scope env :ty-id)
-           flag false, s #{} ;check for duplicated headers
-           i 0]
-      (if (= i n)
-        (do (assert (= flag false)
-                    "duplicate type names declared in consec-ty-decl")
-            env)
-        (let [ty-name ((decl-vec i) 1)]
-          (recur (symtab/create-an-entry env :ty-id ty-name :undefined)
-                 (or flag (contains? s ty-name))
-                 (conj s ty-name)
-                 (inc i)))))))
-
-(defn consec-ty-decl-2nd-pass
-  "appending bodies to corresponding headers that are already in table"
-  [env decl-vec]
-  (let [n (count decl-vec)]
-    (loop [env (assoc env :alias-set-coll [])
-           i 0]
-      (if (= i n) env
-          (recur (apply doit env (decl-vec i))
-                 (inc i))))))
-
-(defn consec-ty-decl-3rd-pass
-  "utilize (:alias-set-coll env), and then drop it from env"
-  [env]
-  (let [ascoll (:alias-set-coll env)]
-    (assert (not (nil? ascoll)))
-    (loop [env env, ascoll (seq ascoll)]
-      (if (empty? ascoll)
-        (dissoc env :alias-set-coll)
-        (recur (let [aset (first ascoll)]
-                 (loop [env env, as (seq aset)]
-                   (if (empty? as) env
-                       (recur (symtab/update-at-curr-scope
-                               env :ty-id (first as) :equiv-set aset)
-                              (rest as)))))
-               (rest ascoll))))))

@@ -1,21 +1,22 @@
 (ns type)
 
-(def kind-set #{:void :int :string :nil :record :array :alias})
+(def kind-set
+  #{:void :int :string :nil :record :array :alias})
 
-(defn alias [s t]
-  (assert (and (symbol? s) (symbol? t)))
-  (let [id (gensym (str s))]
-    {:id id :kind :alias :orig-type t}))
+(defn id [s] (assert (symbol? s))
+  (gensym (str s)))
 
-(defn array [s t]
-  (assert (and (symbol? s) (symbol? t)))
-  (let [id (gensym (str s))]
-    {:id id :kind :array :elem-type t}))
+(defn undefined [name] (assert (symbol? name))
+  {:name name})
 
-(defn record [s fv]
-  (assert (and (symbol? s) (vector? fv)))
-  (let [id (gensym (str s))]
-    {:id id :kind :record :fieldv fv}))
+(defn alias [t] (assert (symbol? t))
+  {:kind :alias :orig-type t})
+
+(defn array [t] (assert (symbol? t))
+  {:kind :array :elem-type t})
+
+(defn record [fv] (assert (vector? fv))
+  {:kind :record :fieldv fv})
 
 (defn alias? [t] (= (:kind t) :alias))
 (defn array? [t] (= (:kind t) :array))
@@ -28,8 +29,6 @@
 (defn alias-origin [a]
   (assert (alias? a))
   (:orig-type a))
-
-(defn id [t] (:id t))
 
 (defn equal? [ta tb]
   (or (= (:id ta) (:id tb))

@@ -14,7 +14,7 @@
           [:if (cv 1) (cv 3) else]))
     7 [:while (cv 1) (cv 3)]
     8 [:for (symbol (:name (cv 1))) (cv 3) (cv 5) (cv 7)]
-    9 [:break] ;TODO need to ensure that the break is enclosed in a while/for expr
+    9 [:break]
     10 [:let (cv 1)]
     11 [:let (cv 1) (cv 3)]))
 

@@ -1,15 +1,16 @@
 (ns symtab)
 
-(defn type-in-scope?
+
+
+(defn type-in-scope
   "determine if a type name can be found in the env"
   [env x]
   (let [stack (:ty-id env) n (count stack)]
     (loop [s stack, i 0]
-      (if (= i n)
-        false
-        (if (get (peek s) x)
-          true
-          (recur (pop s) (inc i)))))))
+      (if (= i n) nil
+          (let [entity (get (peek s) x)]
+            (if entity entity
+                (recur (pop s) (inc i))))))))
 
 (defn create-an-entry
   "create an entry at current scope for given namespace (:ty-id or :id), and return updated env"
