@@ -170,8 +170,41 @@
                     (recur (push-scope r scope)
                            (pop-scope t))))))))))))
 
+(defn form-equiv-set [env aset]
+  (loop [es (seq aset)
+         r  {}]
+    (if (empty? es)
+      r
+      (let [e (first es)
+            env' (:environment (lookup-ty-id env e))]
+        (assert (not (nil? env')))
+        (recur (rest es) (assoc r e env'))))))
+
+(defn consec-ty-decl-3rd-pass [env]
+  (let [asv (:alias-set-coll env)]
+    (assert (not (nil? asv)))
+    (loop [env (dissoc env :alias-set-coll)
+           as  (seq asv)]
+      (if (empty? as)
+        env
+        (let [a (first as)
+              es (form-equiv-set env a)]
+          (recur
+           (loop [env env
+                  ts (seq a)]
+             (if (empty? ts)
+               env
+               (let [t (first ts)]
+                 (recur (update-a-ty-id-entry env t :equiv-set es)
+                        (rest ts)))))
+           (rest as)))))))
+
 (defn do-consec-ty-decl [env & args]
-  (let [dv (first args)]))
+  (let [dv (first args)]
+    (-> env
+        (consec-ty-decl-1st-pass dv)
+        (consec-ty-decl-2nd-pass dv)
+        (consec-ty-decl-3rd-pass))))
 
 (defn doit [env & args]
   (case (first args)
