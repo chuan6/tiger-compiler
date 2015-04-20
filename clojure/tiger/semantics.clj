@@ -1,5 +1,7 @@
 (ns semantics)
 
+(declare doit)
+
 (def empty-env {:ty-id [] :id []})
 (def empty-scope {:ty-id {} :id {}})
 
@@ -46,7 +48,7 @@
         nil ;"no such id"
         (let [entity (get (:id top) id)]
           (if entity
-            {:result entity :environment env}
+            {:result entity :env env}
             (recur (pop-scope env))))))))
 
 (defn lookup-ty-id
@@ -58,8 +60,29 @@
         nil ;"no such ty-id"
         (let [entity (get (:ty-id top) ty-id)]
           (if entity
-            {:result entity :environment env}
+            {:result entity :env env}
             (recur (pop-scope env))))))))
+
+(defn do-assign [env lvalue expr] {:kind :void})
+(defn do-empty [env] {:kind :void})
+(defn do-record [env tname texpr] {:kind :record})
+(defn do-array [env tname len val] {:kind :array})
+(defn do-if [env cond then & args] )
+(defn do-while [env cond loop] {:kind :void})
+(defn do-for [env iname begin end loop] {:kind :void})
+(defn do-break [env])
+(defn do-let [env decls & seq])
+(defn do-lvalue [env kind & args])
+(defn do-neg [env x] {:kind :int})
+(defn do-or [env x y] {:kind :int})
+(defn do-and [env x y] {:kind :int})
+(defn do-string [env s] {:kind :string})
+(defn do-cmp [env kind x y] {:kind :int})
+(defn do-int [env d] {:kind :int})
+(defn do-cal [env kind x y])
+(defn do-nil [env] {:kind :nil})
+(defn do-seq [env seq])
+(defn do-call [env fname & args])
 
 (defn consec-ty-decl-1st-pass
   "add headers to scope"
@@ -176,7 +199,7 @@
     (if (empty? es)
       r
       (let [e (first es)
-            env' (:environment (lookup-ty-id env e))]
+            env' (:env (lookup-ty-id env e))]
         (assert (not (nil? env')))
         (recur (rest es) (assoc r e env'))))))
 
@@ -206,7 +229,42 @@
         (consec-ty-decl-2nd-pass dv)
         (consec-ty-decl-3rd-pass))))
 
+(defn do-var-decl
+  "assoc variable id to current scope"
+  ([env var expr]
+   (let [t (apply doit env expr)]
+     (assert (not (type/void? (:result (lookup-ty-id (:env t) (:name t))))))
+     (let [scope (peek-scope env)]
+       (assert (not (nil? scope)))
+       (push-scope (pop-scope env)
+                   (assoc-id scope var t)))))
+  ([env var type expr]))
+
+(defn do-consec-fn-decl [env & args])
+
 (defn doit [env & args]
   (case (first args)
-    :consec-ty-decl (apply do-consec-ty-decl env (rest args))))
+    :assign         (apply do-assign env (rest args))
+    :empty          (apply do-empty env (rest args))
+    :record         (apply do-record env (rest args))
+    :array          (apply do-array env (rest args))
+    :if             (apply do-if env (rest args))
+    :while          (apply do-while env (rest args))
+    :for            (apply do-for env (rest args))
+    :break          (apply do-break env (rest args))
+    :let            (apply do-let env (rest args))
+    :lvalue         (apply do-lvalue env (rest args))
+    :neg            (apply do-neg env (rest args))
+    :or             (apply do-or env (rest args))
+    :and            (apply do-and env (rest args))
+    :string         (apply do-string env (rest args))
+    :cmp            (apply do-cmp env (rest args))
+    :int            (apply do-int env (rest args))
+    :cal            (apply do-cal env (rest args))
+    :nil            (apply do-nil env (rest args))
+    :seq            (apply do-seq env (rest args))
+    :call           (apply do-call env (rest args))
+    :var-decl       (apply do-var-decl env (rest args))
+    :consec-ty-decl (apply do-consec-ty-decl env (rest args))
+    :consec-fn-decl (apply do-consec-fn-decl env (rest args))))
 

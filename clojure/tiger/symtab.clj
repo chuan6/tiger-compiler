@@ -1,7 +1,5 @@
 (ns symtab)
 
-
-
 (defn type-in-scope
   "determine if a type name can be found in the env"
   [env x]
