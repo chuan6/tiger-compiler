@@ -12,20 +12,20 @@
               (if (= r s) (alter ex assoc :rank (inc r)))
               ex))))
 
-(defn find-set [ex]
+(defn parent [ex]
   (let [path (:path @ex)]
-    (if (empty? path)
+    (if (empty? path) ex (first path))))
+
+(defn find-set [ex]
+  (let [p (parent ex)]
+    (if (= p ex)
       ex
-      (let [root (find-set (first path))]
+      (let [root (find-set p)]
         (dosync (alter ex assoc :path `(~root))
                 root)))))
 
 (defn union [ex ey]
   (link (find-set ex) (find-set ey)))
-
-(defn parent [ex]
-  (let [path (:path @ex)]
-    (if (empty? path) ex (first path))))
 
 (defn test-0 []
   (let [a (make-set "hello")
