@@ -18,11 +18,11 @@
 
 (defn find-set [ex]
   (let [p (parent ex)]
-    (if (= p ex)
-      ex
-      (let [root (find-set p)]
-        (dosync (alter ex assoc :path `(~root))
-                root)))))
+    (if (= p ex) ex
+        (dosync
+         (let [root (find-set p)]
+           (alter ex assoc :path `(~root))
+           root)))))
 
 (defn union [ex ey]
   (link (find-set ex) (find-set ey)))
