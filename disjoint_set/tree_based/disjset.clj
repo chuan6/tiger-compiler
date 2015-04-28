@@ -10,14 +10,16 @@
          (contains? xval :item))))
 
 (defn link [ex ey]
-  (let [{r :rank p :path} @ex
-        {s :rank q :path} @ey]
-    (if (< r s)
-      (dosync (alter ex assoc :path (conj q ey))
-              ey)
-      (dosync (alter ey assoc :path (conj p ex))
-              (if (= r s) (alter ex assoc :rank (inc r)))
-              ex))))
+  (if (= ex ey)
+    ex
+    (let [{r :rank p :path} @ex
+          {s :rank q :path} @ey]
+      (if (< r s)
+        (dosync (alter ex assoc :path (conj q ey))
+                ey)
+        (dosync (alter ey assoc :path (conj p ex))
+                (if (= r s) (alter ex assoc :rank (inc r)))
+                ex)))))
 
 (defn parent [ex]
   (let [path (:path @ex)]
