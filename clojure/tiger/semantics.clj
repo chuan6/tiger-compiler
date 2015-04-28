@@ -20,27 +20,25 @@
      env-stack
      (->
       env
-      ((fn [env] ;1st pass, collecting headers
-         (loop [ds ds env env
-                s #{}]
+      ((fn [env] ;1st pass: collect headers, and assoc each with :equiv-set
+         (loop [ds ds env env s #{}]
            (if (empty? ds)
              env
-             (let [d (first ds)
-                   [action header] d]
+             (let [[action header] (first ds)]
                (assert (= action :ty-decl))
                (assert (not (contains? s header))
                        (str "type name " s " is not unique in current"
                             " consecutive type declartions"))
-               (recur (rest ds) (assoc-tid env header {})
+               (recur (rest ds)
+                      (assoc-tid env header
+                                 {:equiv-set (disjoint-set/make-set header)})
                       (conj s header)))))))
       ((fn [env] ;2nd pass, updating alias equivalence sets
          (loop [ds ds env env]
-           (println "loop" ds)
            (if (empty? ds)
              env
              (let [[action header body] (first ds)
                    [kind arg] body]
-               (println action header kind arg)
                (assert (declared-tid? env header) (str header))
                (assert (contains? #{:alias :record :array} kind))
                (case kind
@@ -50,16 +48,13 @@
                   (let [origin arg
                         ta (lookup-tid env header)
                         tb (lookup-tid env origin)
-                        a (if-let [r (:equiv-set ta)] r
-                                  (disjoint-set/make-set header))
-                        b (if-let [r (:equiv-set tb)] r
-                                  (disjoint-set/make-set origin))]
+                        a (:equiv-set ta)
+                        b (:equiv-set tb)]
+                    (assert (and (disjoint-set/element? a)
+                                 (disjoint-set/element? b)))
                     (do (disjoint-set/union a b)
                         ;;TODO guarantee that the ONLY non-alias element is at root
-                        (-> env
-                            (assoc-tid header {:kind :alias :equiv-set a})
-                            (assoc-tid origin (assoc tb :equiv-set b))))))
-                 ))))))))))
+                        (assoc-tid env header (assoc ta :kind :alias)))))))))))))))
 
 (comment
   (defn doit [env & args]
