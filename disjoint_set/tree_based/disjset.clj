@@ -2,6 +2,13 @@
 
 (defn make-set [x] (ref {:rank 0 :path () :item x}))
 
+(defn element? [x]
+  (and (instance? clojure.lang.Ref x)
+       (let [xval @x]
+         (contains? xval :rank)
+         (contains? xval :path)
+         (contains? xval :item))))
+
 (defn link [ex ey]
   (let [{r :rank p :path} @ex
         {s :rank q :path} @ey]
