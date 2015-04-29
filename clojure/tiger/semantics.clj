@@ -29,7 +29,7 @@
                 (recur (assoc-tid env header (type/init))
                        (rest ds) (conj s header))))))
 
-        second-pass
+        second-pass ;attach type entities
         (fn [env] ;note: change through side-effects
           (loop [ds ds]
             (if (empty? ds)
@@ -42,8 +42,18 @@
                       ;;type is an alias of a non-built-in type
                       (let [b (lookup-tid env (body 1))]
                         (type/let-equal a b)))
-                    (recur (rest ds)))))))]
-    (conj env-stack (-> env (first-pass) (second-pass)))))
+                    (recur (rest ds)))))))
+
+        third-pass ;check if every type name has a type entity attached
+        (fn [env]
+          (loop [ds ds]
+            (if (empty? ds)
+              env
+              (let [header ((first ds) 1)
+                    a (lookup-tid env header)]
+                (assert (type/entity-attached? a))
+                (recur (rest ds))))))]
+    (conj env-stack (-> env (first-pass) (second-pass) (third-pass)))))
 
 (comment
   (defn doit [env & args]

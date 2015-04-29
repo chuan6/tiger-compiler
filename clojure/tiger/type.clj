@@ -63,6 +63,10 @@
   (assert (nil? (get-entity x)) "type entity conflict")
   (dosync (alter x assoc :entity entity)))
 
+(defn entity-attached?
+  "determine if there is an entity attached to the given type"
+  [x] (not (nil? (get-entity x))))
+
 (declare link)
 
 (defn let-equal
@@ -82,6 +86,18 @@
 
               ey-nil? ;an entity is attached to xr
               (-> (link xr yr) (attach-entity ex)))))))
+
+(defn equal?
+  "determine equivalence of the two given types"
+  [x y]
+  (let [xr (find-set x) yr (find-set y)]
+    (if (= xr yr)
+      true
+      (let [kx (:kind (:entity @xr))
+            ky (:kind (:entity @yr))]
+        (cond (= kx ky :int) true
+              (= kx ky :string) true
+              :else false)))))
 
 (defn link [x y]
   "link by rank"
