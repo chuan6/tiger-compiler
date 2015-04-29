@@ -55,6 +55,33 @@
                 (recur (rest ds))))))]
     (conj env-stack (-> env (first-pass) (second-pass) (third-pass)))))
 
+(declare do-expression)
+
+(defn assoc-id [env id entity]
+  (let [prev (:id env)]
+    (assoc env :id (assoc prev id entity))))
+
+(defn do-var-decl
+  ([env-stack id expr]
+   (let [env (peek env-stack)
+         et (do-expression env expr)]
+     (assert (not (type/void? et)))
+     (conj env-stack (assoc-id env id {:type et}))))
+
+  ([env-stack id type expr]
+   (let [env (peek env-stack)
+         t (lookup-tid env type)]
+     (assert (not (nil? t)))
+     (let [et (do-expression env expr)]
+       (assert (type/equal? t et))
+       (conj env-stack (assoc-id env id {:type t}))))))
+
+(defn do-int [env val] (lookup-tid env 'int))
+
+(defn do-expression [env expr]
+  (case (expr 0)
+    :int (apply do-int env (subvec expr 1))))
+
 (comment
   (defn doit [env & args]
     (case (first args)

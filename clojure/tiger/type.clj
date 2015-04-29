@@ -118,3 +118,15 @@
               (alter x assoc :path `(~r))
               r))
     x))
+
+(defn void? [x] (= (:kind (get-entity x)) :void))
+
+(defn cons-int []
+  (let [t (init) e {:kind :int}]
+    (do (attach-entity t e) t)))
+
+(defn cons-string []
+  (let [t (init) e {:kind :string}]
+    (do (attach-entity t e) t)))
+
+
