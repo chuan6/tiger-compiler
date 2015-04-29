@@ -3,8 +3,7 @@
 (declare doit)
 
 (defn assoc-tid [env tid entity]
-  (assert (or (or (not (= tid 'int)) (type/int? entity))
-              (or (not (= tid 'string)) (type/string? entity))))
+  (assert (not (or (= tid 'int) (= tid 'string))))
   (let [prev (:ty-id env)]
     (assoc env :ty-id (assoc prev tid entity))))
 
@@ -15,46 +14,36 @@
 
 (defn do-consec-ty-decl [env-stack ty-decl-vec]
   (let [env (peek env-stack)
-        ds (seq ty-decl-vec)]
-    (conj
-     env-stack
-     (->
-      env
-      ((fn [env] ;1st pass: collect headers, and assoc each with :equiv-set
-         (loop [ds ds env env s #{}]
-           (if (empty? ds)
-             env
-             (let [[action header] (first ds)]
-               (assert (= action :ty-decl))
-               (assert (not (contains? s header))
-                       (str "type name " s " is not unique in current"
-                            " consecutive type declartions"))
-               (recur (rest ds)
-                      (assoc-tid env header
-                                 {:equiv-set (disjoint-set/make-set header)})
-                      (conj s header)))))))
-      ((fn [env] ;2nd pass, updating alias equivalence sets
-         (loop [ds ds env env]
-           (if (empty? ds)
-             env
-             (let [[action header body] (first ds)
-                   [kind arg] body]
-               (assert (declared-tid? env header) (str header))
-               (assert (contains? #{:alias :record :array} kind))
-               (case kind
-                 :alias
-                 (recur
-                  (rest ds)
-                  (let [origin arg
-                        ta (lookup-tid env header)
-                        tb (lookup-tid env origin)
-                        a (:equiv-set ta)
-                        b (:equiv-set tb)]
-                    (assert (and (disjoint-set/element? a)
-                                 (disjoint-set/element? b)))
-                    (do (disjoint-set/union a b)
-                        ;;TODO guarantee that the ONLY non-alias element is at root
-                        (assoc-tid env header (assoc ta :kind :alias)))))))))))))))
+        ds (seq ty-decl-vec)
+
+        first-pass ;collect headers, and init types
+        (fn [env]
+          (loop [env env ds ds s #{}]
+            (if (empty? ds)
+              env
+              (let [[action header] (first ds)]
+                (assert (= action :ty-decl))
+                (assert (not (contains? s header))
+                        (str "duplicate declaration of " header
+                             " is found"))
+                (recur (assoc-tid env header (type/init))
+                       (rest ds) (conj s header))))))
+
+        second-pass
+        (fn [env] ;note: change through side-effects
+          (loop [ds ds]
+            (if (empty? ds)
+              env
+              (let [[action header body] (first ds)
+                    a (lookup-tid env header)]
+                (do (if-let [entity (type/expr env body)]
+                      ;;type is defined by a concrete type
+                      (type/attach-entity a entity)
+                      ;;type is an alias of a non-built-in type
+                      (let [b (lookup-tid env (body 1))]
+                        (type/let-equal a b)))
+                    (recur (rest ds)))))))]
+    (conj env-stack (-> env (first-pass) (second-pass)))))
 
 (comment
   (defn doit [env & args]

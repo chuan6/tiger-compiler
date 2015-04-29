@@ -48,17 +48,20 @@
                             (conj fv {:name name :type type})
                             (conj s name)))))})))
 
-(defn attach-entity
-  "attach a type entity created by expr to a type"
-  [x entity]
-  (assert (type? x) (str x))
-  (dosync (alter x assoc :entity entity)))
-
 (declare find-set)
 
 (defn get-entity
   "get the type entity associated with the given type"
-  [x] (:entity (deref (find-set x))))
+  [x] (if-let [e (:entity @x)]
+        ;;if e is not nil, it should be the same as the
+        ;;entity attached to the root
+        e (:entity (deref (find-set x)))))
+
+(defn attach-entity
+  "attach a type entity created by expr to a type"
+  [x entity]
+  (assert (nil? (get-entity x)) "type entity conflict")
+  (dosync (alter x assoc :entity entity)))
 
 (declare link)
 
@@ -88,6 +91,7 @@
       (dosync (alter x assoc :path (conj q y))
               y)
       (dosync (alter y assoc :path (conj p x))
+              (if (= r s) (alter x assoc :rank (inc r)))
               x))))
 
 (defn find-set
