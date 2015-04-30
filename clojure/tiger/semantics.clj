@@ -76,6 +76,25 @@
        (assert (type/equal? t et))
        (conj env-stack (assoc-id env id {:type t}))))))
 
+(defn do-neg [env val]
+  (let [t (do-expression env val)]
+    (assert (type/int? t) "unary - only works on integer")
+    (lookup-tid env 'int)))
+
+(defn do-or [env a b]
+  (let [tya (do-expression env a)
+        tyb (do-expression env b)]
+    (assert (and (type/int? tya) (type/int? tyb))
+            "| only works on integers")
+    (lookup-tid env 'int)))
+
+(defn do-and [env a b]
+  (let [tya (do-expression env a)
+        tyb (do-expression env b)]
+    (assert (and (type/int? tya) (type/int? tyb))
+            "& only works on integers")
+    (lookup-tid env 'int)))
+
 (defn do-cmp [env kind a b]
   (let [tya (do-expression env a)
         tyb (do-expression env b)]
