@@ -99,6 +99,10 @@
               (= kx ky :string) true
               :else false)))))
 
+(defn string? [x] (= (:kind (get-entity x)) :string))
+
+(defn int? [x] (= (:kind (get-entity x)) :int))
+
 (defn link [x y]
   "link by rank"
   (let [{r :rank p :path} @x

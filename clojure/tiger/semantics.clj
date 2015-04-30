@@ -76,11 +76,28 @@
        (assert (type/equal? t et))
        (conj env-stack (assoc-id env id {:type t}))))))
 
+(defn do-cmp [env kind a b]
+  (let [tya (do-expression env a)
+        tyb (do-expression env b)]
+    (assert (not (or (type/void? tya) (type/void? tyb)))
+            "cannot compare against no-value expression")
+    (assert (type/equal? tya tyb)
+            "cannot compare between expressions of different types")
+    (if (#{:eq :neq} kind)
+      (lookup-tid env 'int)
+      (do (assert (or (type/int? tya) (type/string? tya))
+                  "<, >, <=, >= only work on integers or strings")
+          (lookup-tid env 'int)))))
+
+(defn do-string [env val] (lookup-tid env 'string))
+
 (defn do-int [env val] (lookup-tid env 'int))
 
 (defn do-expression [env expr]
-  (case (expr 0)
-    :int (apply do-int env (subvec expr 1))))
+  (let [argv (subvec expr 1)]
+    (case (expr 0)
+      :int (apply do-int env argv)
+      :string (apply do-string env argv))))
 
 (comment
   (defn doit [env & args]
