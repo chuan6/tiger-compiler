@@ -91,11 +91,21 @@
 
 (defn do-string [env val] (lookup-tid env 'string))
 
+(defn do-cal [env kind a b]
+  (let [tya (do-expression env a)
+        tyb (do-expression env b)]
+    (assert (and (type/int? tya) (type/int? tyb))
+            "+, -, *, / only work on integers")
+    (lookup-tid env 'int)))
+
 (defn do-int [env val] (lookup-tid env 'int))
+
+(defn do-nil [env] type/nil-expr)
 
 (defn do-expression [env expr]
   (let [argv (subvec expr 1)]
     (case (expr 0)
+      :nil (apply do-nil env argv)
       :int (apply do-int env argv)
       :string (apply do-string env argv))))
 

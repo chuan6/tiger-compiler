@@ -95,9 +95,14 @@
       true
       (let [kx (:kind (:entity @xr))
             ky (:kind (:entity @yr))]
-        (cond (= kx ky :int) true
-              (= kx ky :string) true
-              :else false)))))
+        (case [kx ky]
+          [:int :int] true
+          [:string :string] true
+          [:nil :record] true
+          [:record :nil] true
+          [:nil :array] true
+          [:array :nil] true
+          false)))))
 
 (defn string? [x] (= (:kind (get-entity x)) :string))
 
@@ -132,5 +137,8 @@
 (defn cons-string []
   (let [t (init) e {:kind :string}]
     (do (attach-entity t e) t)))
+
+(def nil-expr (ref {:rank 0 :path () :entity {:kind :nil}}))
+
 
 
