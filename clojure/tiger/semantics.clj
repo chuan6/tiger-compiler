@@ -137,9 +137,43 @@
             (assert (type/equal? ty et) "field type doesn't match")
             (recur (rest fs) (rest ts))))))))
 
+(defn do-array [env tid len init]
+  (let [t (lookup-tid env tid)]
+    (assert (type/array? t) (str "expect " t " to be array"))
+    (let [tylen (do-expression env len)
+          tyelem (:elem-type (type/get-entity t))
+          tyinit (do-expression env init)]
+      (assert (type/int? tylen) "found non-integer array length")
+      (assert (type/equal? tyelem tyinit)
+              "array element type doesn't match")
+      t)))
+
+(defn do-let [env decl-list expr-seq]
+  (let [env-stack (loop [estk [env]
+                         ds (seq decl-list)]
+                    (if (empty? ds)
+                      estk
+                      (recur
+                       (let [d (first ds)]
+                         (case (d 0)
+                           :var-decl
+                           (apply do-var-decl estk (subvec d 1))
+                           :consec-ty-decl
+                           (apply do-consec-ty-decl estk (subvec d 1))
+                           ;;TODO :consec-fn-decl
+                           ))
+                       (rest ds))))
+        env (peek env-stack)]
+    (loop [es (seq expr-seq)
+           t type/no-value]
+      (if (empty? es)
+        t
+        (recur (rest es) (do-expression env (first es)))))))
+
 (defn do-expression [env expr]
   (let [argv (subvec expr 1)]
     (case (expr 0)
+      :array (apply do-array env argv)
       :record (apply do-record env argv)
       :neg (apply do-neg env argv)
       :or (apply do-or env argv)

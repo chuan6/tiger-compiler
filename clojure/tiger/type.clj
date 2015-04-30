@@ -122,6 +122,8 @@
 
 (defn record? [x] (reflect x :record))
 
+(defn array? [x] (reflect x :array))
+
 (defn link [x y]
   "link by rank"
   (let [{r :rank p :path} @x
@@ -151,6 +153,8 @@
     (do (attach-entity t e) t)))
 
 (def nil-expr (ref {:rank 0 :path () :entity {:kind :nil}}))
+
+(def no-value (ref {:rank 0 :path () :entity {:kind :void}}))
 
 
 

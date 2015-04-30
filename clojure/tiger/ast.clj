@@ -15,7 +15,7 @@
     7 [:while (cv 1) (cv 3)]
     8 [:for (symbol (:name (cv 1))) (cv 3) (cv 5) (cv 7)]
     9 [:break]
-    10 [:let (cv 1)]
+    10 [:let (cv 1) []]
     11 [:let (cv 1) (cv 3)]))
 
 (defn trans-if-tail [nth cv]
