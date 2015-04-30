@@ -33,15 +33,22 @@
         'string {:kind :string}
         nil)
 
-      :array {:kind :array :elem-type body}
+      :array
+      {:kind :array
+       :elem-type (let [tid body
+                        type (get (:ty-id env) tid)]
+                    (assert type
+                            "array element expect existing type")
+                    type)}
 
       :record
       {:kind :record
        :fieldv (loop [fs (seq body) fv [] s #{}]
                  (if (empty? fs)
                    fv
-                   (let [[name type] (first fs)]
-                     (assert (get (:ty-id env) type))
+                   (let [[name tid] (first fs)
+                         type (get (:ty-id env) tid)]
+                     (assert type "field expect existing type")
                      (assert (not (contains? s name))
                              "duplicate field name found")
                      (recur (rest fs)
@@ -104,9 +111,16 @@
           [:array :nil] true
           false)))))
 
-(defn string? [x] (= (:kind (get-entity x)) :string))
+(defn reflect [x kind]
+  (= (:kind (get-entity x)) kind))
 
-(defn int? [x] (= (:kind (get-entity x)) :int))
+(defn void? [x] (reflect x :void))
+
+(defn string? [x] (reflect x :string))
+
+(defn int? [x] (reflect x :int))
+
+(defn record? [x] (reflect x :record))
 
 (defn link [x y]
   "link by rank"
@@ -127,8 +141,6 @@
               (alter x assoc :path `(~r))
               r))
     x))
-
-(defn void? [x] (= (:kind (get-entity x)) :void))
 
 (defn cons-int []
   (let [t (init) e {:kind :int}]

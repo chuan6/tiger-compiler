@@ -121,9 +121,30 @@
 
 (defn do-nil [env] type/nil-expr)
 
+(defn do-record [env tid fv]
+  (let [t (lookup-tid env tid)]
+    (assert (type/record? t) (str "expect " t " to be record"))
+    (let [template (:fieldv (type/get-entity t))]
+      (assert (= (count fv) (count template))
+              "number of fields doesn't match")
+      (loop [fs (seq fv) ts (seq template)]
+        (if (empty? fs)
+          t
+          (let [[fn expr] (first fs)
+                et (do-expression env expr)
+                {nm :name ty :type} (first ts)]
+            (assert (= fn nm) "field name doesn't match")
+            (assert (type/equal? ty et) "field type doesn't match")
+            (recur (rest fs) (rest ts))))))))
+
 (defn do-expression [env expr]
   (let [argv (subvec expr 1)]
     (case (expr 0)
+      :record (apply do-record env argv)
+      :neg (apply do-neg env argv)
+      :or (apply do-or env argv)
+      :and (apply do-and env argv)
+      :cmp (apply do-cmp env argv)
       :nil (apply do-nil env argv)
       :int (apply do-int env argv)
       :string (apply do-string env argv))))
