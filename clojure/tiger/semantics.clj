@@ -170,18 +170,113 @@
         t
         (recur (rest es) (do-expression env (first es)))))))
 
+(defn do-empty [env] type/no-value)
+
+(defn lookup-id [env id] (get (:id env) id))
+
+(defn do-lvalue [env kind & args]
+  (case kind
+    :simple
+    (let [id (first args)
+          entity (lookup-id env id)]
+      (assert (and entity (contains? entity :type)))
+      (:type entity))
+
+    :field
+    (let [[prefix fdn] args
+          t (do-lvalue env prefix)]
+      (assert (type/record? t)
+              "cannot access field of a non-record value")
+      (let [fdt (type/get-record-field (type/get-entity t) fdn)]
+        (assert (not (nil? fdt)) "no such field name for the type")
+        fdt))
+
+    :subscript
+    (let [[prefix idx] args
+          t (do-lvalue env prefix)]
+      (assert (type/array? t)
+              "cannot access by index for a non-array value")
+      (let [elmt (type/get-array-elem-type (type/get-entity t))
+            ti (do-expression env idx)]
+        (assert (type/int? ti) "expect array index to be an integer")
+        elmt))))
+
+(defn do-assign [env lval expr]
+  (let [ta (do-lvalue env lval)
+        tb (do-expression env expr)]
+    (assert (type/equal? ta tb))
+    ta))
+
+(defn do-seq [env expr-seq]
+  (loop [es (seq expr-seq)
+         t type/no-value]
+    (if (empty? es)
+      t
+      (recur (rest es) (do-expression env (first es))))))
+
+(defn do-if
+  ([env cond then]
+   (let [t (do-expression env cond)
+         ta (do-expression env then)]
+     (assert (type/int? t) "cond-expr must be of int type")
+     (assert (type/void? ta))
+     type/no-value))
+  ([env cond then else]
+   (let [t (do-expression env cond)]
+     (assert (type/int? t) "cond-expr must be of int type")
+     (let [ta (do-expression env then)
+           tb (do-expression env else)]
+       (assert (type/equal? ta tb)
+               "types of then-expr and eles-expr don't match")
+       (if (type/void? ta)
+         type/no-value
+         (let [fa (= ta type/nil-expr)
+               fb (= tb type/nil-expr)]
+           (case [fa fb]
+             [true true] type/nil-expr
+             [true false] tb
+             [false true] ta)))))))
+
+(defn do-while [env cond loop]
+  (let [tc (do-expression env cond)
+        t (do-expression env loop)]
+    (assert (type/int? tc) "cond-expr must be of int type")
+    (assert (type/void? t) "loop-expr must produce no value")
+    type/no-value))
+
+(defn do-for [env id from to loop]
+  (let [ta (do-expression env from)
+        tb (do-expression env to)]
+    (assert (and (type/int? ta) (type/int? tb))
+            "loop index range must be of int type")
+    (let [loop-env (assoc-id env id
+                             {:type (lookup-tid env 'int)})
+          t (do-expression loop-env loop)]
+      (assert (type/void? t) "loop-expr must produce no value")
+      type/no-value)))
+
 (defn do-expression [env expr]
-  (let [argv (subvec expr 1)]
-    (case (expr 0)
-      :array (apply do-array env argv)
-      :record (apply do-record env argv)
-      :neg (apply do-neg env argv)
-      :or (apply do-or env argv)
-      :and (apply do-and env argv)
-      :cmp (apply do-cmp env argv)
-      :nil (apply do-nil env argv)
-      :int (apply do-int env argv)
-      :string (apply do-string env argv))))
+  (let [f (case (expr 0)
+            :assign do-assign
+            :empty do-empty
+            :array do-array
+            :record do-record
+            :seq do-seq
+            :if do-if
+            :while do-while
+            :for do-for
+            :let do-let
+            :lvalue do-lvalue
+            :neg do-neg
+            :or do-or
+            :and do-and
+            :cmp do-cmp
+            :nil do-nil
+            :int do-int
+            :cal do-cal
+            :string do-string)
+        argv (subvec expr 1)]
+    (apply f env argv)))
 
 (comment
   (defn doit [env & args]

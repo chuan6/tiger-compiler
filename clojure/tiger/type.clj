@@ -55,6 +55,22 @@
                             (conj fv {:name name :type type})
                             (conj s name)))))})))
 
+(defn get-array-elem-type
+  [entity]
+  (assert (= (:kind entity) :array))
+  (assert (contains? entity :elem-type))
+  (:elem-type entity))
+
+(defn get-record-field
+  [entity field]
+  (assert (= (:kind entity) :record))
+  (assert (contains? entity :fieldv))
+  (loop [fds (seq (:fieldv entity))]
+    (when-let [fd (first fds)]
+      (if (= field (:name fd))
+        (:type fd)
+        (recur (rest fds))))))
+
 (declare find-set)
 
 (defn get-entity
@@ -109,6 +125,7 @@
           [:record :nil] true
           [:nil :array] true
           [:array :nil] true
+          [:void :void] true
           false)))))
 
 (defn reflect [x kind]
