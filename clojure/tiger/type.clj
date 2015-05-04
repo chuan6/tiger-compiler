@@ -22,6 +22,19 @@
   (and (instance? clojure.lang.Ref x)
        (let [v @x] (contains? v :rank) (contains? v :path))))
 
+(defn read-ty-fields [env fields]
+  (loop [fs (seq fields) fv [] s #{}]
+    (if (empty? fs)
+      fv
+      (let [[name tid] (first fs)
+            type (get (:ty-id env) tid)]
+        (assert type "field expect existing type")
+        (assert (not (contains? s name))
+                "duplicate field name found")
+        (recur (rest fs)
+               (conj fv {:name name :type type})
+               (conj s name))))))
+
 (defn expr
   "create a type entity according to the given type expression"
   [env ty-expr]
@@ -43,17 +56,7 @@
 
       :record
       {:kind :record
-       :fieldv (loop [fs (seq body) fv [] s #{}]
-                 (if (empty? fs)
-                   fv
-                   (let [[name tid] (first fs)
-                         type (get (:ty-id env) tid)]
-                     (assert type "field expect existing type")
-                     (assert (not (contains? s name))
-                             "duplicate field name found")
-                     (recur (rest fs)
-                            (conj fv {:name name :type type})
-                            (conj s name)))))})))
+       :fieldv (read-ty-fields env body)})))
 
 (defn get-array-elem-type
   [entity]
@@ -132,13 +135,9 @@
   (= (:kind (get-entity x)) kind))
 
 (defn void? [x] (reflect x :void))
-
 (defn string? [x] (reflect x :string))
-
 (defn int? [x] (reflect x :int))
-
 (defn record? [x] (reflect x :record))
-
 (defn array? [x] (reflect x :array))
 
 (defn link [x y]
@@ -170,7 +169,6 @@
     (do (attach-entity t e) t)))
 
 (def nil-expr (ref {:rank 0 :path () :entity {:kind :nil}}))
-
 (def no-value (ref {:rank 0 :path () :entity {:kind :void}}))
 
 

@@ -1,6 +1,10 @@
 (ns semantics)
 
-(declare doit)
+(declare do-expression)
+
+(defn assoc-id [env id entity]
+  (let [prev (:id env)]
+    (assoc env :id (assoc prev id entity))))
 
 (defn assoc-tid [env tid entity]
   (assert (not (or (= tid 'int) (= tid 'string))))
@@ -10,7 +14,56 @@
 (defn declared-tid? [env tid]
   (contains? (:ty-id env) tid))
 
+(defn lookup-id [env id] (get (:id env) id))
 (defn lookup-tid [env tid] (get (:ty-id env) tid))
+
+(defn do-consec-fn-decl [env-stack fn-decl-vec]
+  (let [env (peek env-stack)
+        ds (seq fn-decl-vec)
+
+        first-pass ;collect headers, and init func definitions
+        (fn [env]
+          (loop [env env ds ds s #{}]
+            (if (empty? ds)
+              env
+              (let [d (first ds)
+                    [action void? id params] d]
+                (assert (= action :fn-decl))
+                (assert (not (contains? s id))
+                        (str "duplicated declaration of function " id))
+                (let [formal-params (type/read-ty-fields env params)
+                      entity
+                      (if void?
+                        {:kind :procedure :params formal-params}
+                        (let [ret (d 4)
+                              t (lookup-tid env ret)]
+                          (assert (not (nil? t))
+                                  (str "non-exist return type " ret))
+                          {:kind :function :return t
+                           :params formal-params}))]
+                  (recur (assoc-id env id entity)
+                         (rest ds) (conj s id)))))))
+
+        second-pass ;type check function body
+        (fn [env]
+          (loop [ds ds]
+            (if (empty? ds)
+              env
+              (let [d (first ds)
+                    [action void?] d]
+                (if void?
+                  (let [body (d 4)
+                        t (do-expression env body)]
+                    (assert (type/void? t)
+                            "procedure body must not return value")
+                    (rest ds))
+                  (let [[ret body] (subvec d 4)
+                        tr (lookup-tid env ret)
+                        t (do-expression env body)]
+                    (assert (type/equal? tr t)
+                            "function body isn't of the return type")
+                    (rest ds)))))))]
+    (conj env-stack (-> env (first-pass) (second-pass)))))
 
 (defn do-consec-ty-decl [env-stack ty-decl-vec]
   (let [env (peek env-stack)
@@ -55,18 +108,12 @@
                 (recur (rest ds))))))]
     (conj env-stack (-> env (first-pass) (second-pass) (third-pass)))))
 
-(declare do-expression)
-
-(defn assoc-id [env id entity]
-  (let [prev (:id env)]
-    (assoc env :id (assoc prev id entity))))
-
 (defn do-var-decl
   ([env-stack id expr]
    (let [env (peek env-stack)
          et (do-expression env expr)]
      (assert (not (type/void? et)))
-     (conj env-stack (assoc-id env id {:type et}))))
+     (conj env-stack (assoc-id env id {:kind :variable :type et}))))
 
   ([env-stack id type expr]
    (let [env (peek env-stack)
@@ -74,7 +121,7 @@
      (assert (not (nil? t)))
      (let [et (do-expression env expr)]
        (assert (type/equal? t et))
-       (conj env-stack (assoc-id env id {:type t}))))))
+       (conj env-stack (assoc-id env id {:kind :variable :type t}))))))
 
 (defn do-neg [env val]
   (let [t (do-expression env val)]
@@ -172,8 +219,6 @@
 
 (defn do-empty [env] type/no-value)
 
-(defn lookup-id [env id] (get (:id env) id))
-
 (defn do-lvalue [env kind & args]
   (case kind
     :simple
@@ -244,6 +289,7 @@
     (assert (type/void? t) "loop-expr must produce no value")
     type/no-value))
 
+;;TODO ensure that id is not assigned to in loop body
 (defn do-for [env id from to loop]
   (let [ta (do-expression env from)
         tb (do-expression env to)]
@@ -255,8 +301,41 @@
       (assert (type/void? t) "loop-expr must produce no value")
       type/no-value)))
 
+(defn do-call [env id expr-list]
+  (let [entity (lookup-id env id)]
+    (assert (not (nil? entity)) (str "cannot find id: " id))
+    (let [kind (:kind entity)]
+      (assert (#{:procedure :function} kind)
+              (str id " is not a procedure or a function"))
+      (case kind
+        :procedure
+        (do (let [pv (:params entity)
+                  av expr-list]
+              (assert (= (count pv) (count av))
+                      (str "argument number doesn't match " id))
+              (loop [ps (seq pv) as (seq av)]
+                (when-let [p (first ps)]
+                  (do (assert (type/equal? p (first as))
+                              "argument type doesn't match")
+                      (recur (rest ps) (rest as))))))
+            type/no-value)
+        :function
+        (do (let [pv (:params entity)
+                  av expr-list]
+              (assert (= (count pv) (count av))
+                      (str "argument number doesn't match " id))
+              (loop [ps (seq pv) as (seq av)]
+                (when-let [p (first ps)]
+                  (do (assert (type/equal? p (first as))
+                              "argument type doesn't match")
+                      (recur (rest ps) (rest as))))))
+            (:return entity))))))
+
 (defn do-expression [env expr]
   (let [f (case (expr 0)
+            :consec-ty-decl do-consec-ty-decl
+            :var-decl do-var-decl
+            :consec-fn-decl do-consec-fn-decl
             :assign do-assign
             :empty do-empty
             :array do-array
@@ -274,7 +353,8 @@
             :nil do-nil
             :int do-int
             :cal do-cal
-            :string do-string)
+            :string do-string
+            :call do-call)
         argv (subvec expr 1)]
     (apply f env argv)))
 

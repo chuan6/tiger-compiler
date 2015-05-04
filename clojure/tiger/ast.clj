@@ -62,7 +62,7 @@
     1 [:nil]
     2 (cv 0)
     3 [:seq (cv 1)]
-    4 [:call (symbol (:name (cv 0)))]
+    4 [:call (symbol (:name (cv 0))) []]
     5 [:call (symbol (:name (cv 0))) (cv 2)]))
 
 (defn trans-cmp [nth cv]
@@ -111,7 +111,7 @@
 
 (defn trans-ty-decl [nth cv]
   (case nth
-    0 [:ty-decl, (symbol (:name (cv 1))), (cv 3)]))
+    0 [:ty-decl (symbol (:name (cv 1))) (cv 3)]))
 
 (defn trans-ty [nth cv]
   (case nth
@@ -134,36 +134,38 @@
 
 (defn trans-fn-decl [nth cv]
   (case nth
-    0 [:fn-decl true (symbol (:name (cv 1))) (cv 5)] ;true for no return
+    0 [:fn-decl true (symbol (:name (cv 1))) [] (cv 5)] ;true for no return
     1 [:fn-decl true (symbol (:name (cv 1))) (cv 3) (cv 6)]
-    2 [:fn-decl false (symbol (:name (cv 1))) (symbol (:name (cv 5))) (cv 7)]
+    2 [:fn-decl false (symbol (:name (cv 1))) [] (symbol (:name (cv 5))) (cv 7)]
     3 [:fn-decl false (symbol (:name (cv 1))) (cv 3) (symbol (:name (cv 6))) (cv 8)]))
 
 ;;;transform concrete syntax tree to abstract syntax tree
 (defn slr-transform [p cv]
-  (let [{nt :left i :nth} p]
-    (case nt
-      :expr       (trans-expr       i cv)
-      :if-tail    (trans-if-tail    i cv)
-      :lvalue     (trans-lvalue     i cv)
-      :expr-list  (trans-expr-list  i cv)
-      :expr-seq   (trans-expr-seq   i cv)
-      :val        (trans-val        i cv)
-      :arith      (trans-arith      i cv)
-      :or-term    (trans-or-term    i cv)
-      :and-term   (trans-and-term   i cv)
-      :cmp-term   (trans-cmp-term   i cv)
-      :term       (trans-term       i cv)
-      :factor     (trans-factor     i cv)
-      :cmp        (trans-cmp        i cv)
-      :cal-0      (trans-cal-0      i cv)
-      :cal-1      (trans-cal-1      i cv)
-      :field-list (trans-field-list i cv)
-      :decl-list  (trans-decl-list  i cv)
-      :decl       (trans-decl       i cv)
-      :ty-decl    (trans-ty-decl    i cv)
-      :ty         (trans-ty         i cv)
-      :ty-fields  (trans-ty-fields  i cv)
-      :ty-field   (trans-ty-field   i cv)
-      :var-decl   (trans-var-decl   i cv)
-      :fn-decl    (trans-fn-decl    i cv))))
+  (let [{nt :left i :nth} p
+        f (case nt
+            :expr trans-expr
+            :if-tail trans-if-tail
+            :lvalue trans-lvalue
+            :expr-list trans-expr-list
+            :expr-seq trans-expr-seq
+            :val trans-val
+            :arith trans-arith
+            :or-term trans-or-term
+            :and-term trans-and-term
+            :cmp-term trans-cmp-term
+            :term trans-term
+            :factor trans-factor
+            :cmp trans-cmp
+            :cal-0 trans-cal-0
+            :cal-1 trans-cal-1
+            :field-list trans-field-list
+            :decl-list trans-decl-list
+            :decl trans-decl
+            :ty-decl trans-ty-decl
+            :ty trans-ty
+            :ty-fields trans-ty-fields
+            :ty-field trans-ty-field
+            :var-decl trans-var-decl
+            :fn-decl trans-fn-decl)]
+    (f i cv)))
+
