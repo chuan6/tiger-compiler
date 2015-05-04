@@ -11,13 +11,20 @@
   (let [prev (:ty-id env)]
     (assoc env :ty-id (assoc prev tid entity))))
 
+(defn assoc-params [env params]
+  (let [assoc-param (fn [env param]
+                      (assoc-id env (:name param)
+                                {:kind :variable
+                                 :type (:type param)}))]
+    (reduce assoc-param env params)))
+
 (defn declared-tid? [env tid]
   (contains? (:ty-id env) tid))
 
 (defn lookup-id [env id] (get (:id env) id))
 (defn lookup-tid [env tid] (get (:ty-id env) tid))
 
-(defn do-consec-fn-decl [env-stack fn-decl-vec]
+(defn do-consec-fn-decl [env-stack & fn-decl-vec]
   (let [env (peek env-stack)
         ds (seq fn-decl-vec)
 
@@ -50,22 +57,23 @@
             (if (empty? ds)
               env
               (let [d (first ds)
-                    [action void?] d]
+                    [action void? id] d
+                    fenv (assoc-params env (:params (lookup-id env id)))]
                 (if void?
                   (let [body (d 4)
-                        t (do-expression env body)]
+                        t (do-expression fenv body)]
                     (assert (type/void? t)
                             "procedure body must not return value")
-                    (rest ds))
+                    (recur (rest ds)))
                   (let [[ret body] (subvec d 4)
                         tr (lookup-tid env ret)
-                        t (do-expression env body)]
+                        t (do-expression fenv body)]
                     (assert (type/equal? tr t)
                             "function body isn't of the return type")
-                    (rest ds)))))))]
+                    (recur (rest ds))))))))]
     (conj env-stack (-> env (first-pass) (second-pass)))))
 
-(defn do-consec-ty-decl [env-stack ty-decl-vec]
+(defn do-consec-ty-decl [env-stack & ty-decl-vec]
   (let [env (peek env-stack)
         ds (seq ty-decl-vec)
 
@@ -207,10 +215,12 @@
                            (apply do-var-decl estk (subvec d 1))
                            :consec-ty-decl
                            (apply do-consec-ty-decl estk (subvec d 1))
-                           ;;TODO :consec-fn-decl
+                           :consec-fn-decl
+                           (apply do-consec-fn-decl estk (subvec d 1))
                            ))
                        (rest ds))))
         env (peek env-stack)]
+    (println "let environment: " env)
     (loop [es (seq expr-seq)
            t type/no-value]
       (if (empty? es)
@@ -224,12 +234,12 @@
     :simple
     (let [id (first args)
           entity (lookup-id env id)]
-      (assert (and entity (contains? entity :type)))
+      (assert (and entity (contains? entity :type)) (str id env))
       (:type entity))
 
     :field
     (let [[prefix fdn] args
-          t (do-lvalue env prefix)]
+          t (do-expression env prefix)]
       (assert (type/record? t)
               "cannot access field of a non-record value")
       (let [fdt (type/get-record-field (type/get-entity t) fdn)]
@@ -238,7 +248,7 @@
 
     :subscript
     (let [[prefix idx] args
-          t (do-lvalue env prefix)]
+          t (do-expression env prefix)]
       (assert (type/array? t)
               "cannot access by index for a non-array value")
       (let [elmt (type/get-array-elem-type (type/get-entity t))
@@ -247,10 +257,10 @@
         elmt))))
 
 (defn do-assign [env lval expr]
-  (let [ta (do-lvalue env lval)
+  (let [ta (do-expression env lval)
         tb (do-expression env expr)]
     (assert (type/equal? ta tb))
-    ta))
+    type/no-value))
 
 (defn do-seq [env expr-seq]
   (loop [es (seq expr-seq)
@@ -264,7 +274,7 @@
    (let [t (do-expression env cond)
          ta (do-expression env then)]
      (assert (type/int? t) "cond-expr must be of int type")
-     (assert (type/void? ta))
+     (assert (type/void? ta) then)
      type/no-value))
   ([env cond then else]
    (let [t (do-expression env cond)]
@@ -280,7 +290,8 @@
            (case [fa fb]
              [true true] type/nil-expr
              [true false] tb
-             [false true] ta)))))))
+             [false true] ta
+             [false false] ta)))))))
 
 (defn do-while [env cond loop]
   (let [tc (do-expression env cond)
@@ -315,9 +326,11 @@
                       (str "argument number doesn't match " id))
               (loop [ps (seq pv) as (seq av)]
                 (when-let [p (first ps)]
-                  (do (assert (type/equal? p (first as))
-                              "argument type doesn't match")
-                      (recur (rest ps) (rest as))))))
+                  (let [a (first as)
+                        ta (do-expression env a)]
+                    (do (assert (type/equal? (:type p) ta)
+                                "argument type doesn't match")
+                        (recur (rest ps) (rest as)))))))
             type/no-value)
         :function
         (do (let [pv (:params entity)
@@ -326,10 +339,14 @@
                       (str "argument number doesn't match " id))
               (loop [ps (seq pv) as (seq av)]
                 (when-let [p (first ps)]
-                  (do (assert (type/equal? p (first as))
-                              "argument type doesn't match")
-                      (recur (rest ps) (rest as))))))
+                  (let [a (first as)
+                        ta (do-expression env a)]
+                    (do (assert (type/equal? (:type p) ta)
+                                "argument type doesn't match")
+                        (recur (rest ps) (rest as)))))))
             (:return entity))))))
+
+;;TODO do-break
 
 (defn do-expression [env expr]
   (let [f (case (expr 0)
@@ -357,31 +374,4 @@
             :call do-call)
         argv (subvec expr 1)]
     (apply f env argv)))
-
-(comment
-  (defn doit [env & args]
-    (case (first args)
-      :assign         (apply do-assign env (rest args))
-      :empty          (apply do-empty env (rest args))
-      :record         (apply do-record env (rest args))
-      :array          (apply do-array env (rest args))
-      :if             (apply do-if env (rest args))
-      :while          (apply do-while env (rest args))
-      :for            (apply do-for env (rest args))
-      :break          (apply do-break env (rest args))
-      :let            (apply do-let env (rest args))
-      :lvalue         (apply do-lvalue env (rest args))
-      :neg            (apply do-neg env (rest args))
-      :or             (apply do-or env (rest args))
-      :and            (apply do-and env (rest args))
-      :string         (apply do-string env (rest args))
-      :cmp            (apply do-cmp env (rest args))
-      :int            (apply do-int env (rest args))
-      :cal            (apply do-cal env (rest args))
-      :nil            (apply do-nil env (rest args))
-      :seq            (apply do-seq env (rest args))
-      :call           (apply do-call env (rest args))
-      :var-decl       (apply do-var-decl env (rest args))
-      :consec-ty-decl (apply do-consec-ty-decl env (rest args))
-      :consec-fn-decl (apply do-consec-fn-decl env (rest args)))))
 

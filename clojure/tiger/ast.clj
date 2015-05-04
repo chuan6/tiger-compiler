@@ -43,12 +43,14 @@
   (case nth 0 [:and (cv 0) (cv 2)] 1 (cv 0)))
 
 (defn trans-and-term [nth cv]
-  (case nth 0 [(cv 1) (cv 0) (cv 2)] 1 (cv 0)))
+  (case nth
+    0 [:cmp (cv 1) (cv 0) (cv 2)]
+    1 (cv 0)))
 
 (defn trans-cmp-term [nth cv]
   (case nth
     0 [:string (:value (cv 0))]
-    1 [:cmp (cv 1) (cv 0) (cv 2)]
+    1 [:cal (cv 1) (cv 0) (cv 2)]
     2 (cv 0)))
 
 (defn trans-term [nth cv]
