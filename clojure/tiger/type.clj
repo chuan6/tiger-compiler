@@ -22,7 +22,115 @@
   (and (instance? clojure.lang.Ref x)
        (let [v @x] (contains? v :rank) (contains? v :path))))
 
+(declare equal?)
+
+;;built-in types: int, string, nil, void(or 'no-value')
+(def int (init))
+(def string (init))
+(def nil-expr (init))
+(def void (init))
+
+(defn int? [x] (equal? x int)) ;int may be aliased, thus use equal?
+(defn string? [x] (equal? x string)) ;same as int?
+(defn nil-expr? [x] (= x nil-expr)) ;nil-expr isn't to be aliased
+(defn void? [x] (= x void)) ;same as nil-expr?
+
+(defn built-in? [x] (or (int? x) (string? x) (nil-expr? x) (void? x)))
+
+(defn- find-set
+  "find the representative and do path compression along the way"
+  [x]
+  (if-let [p (first (:path @x))]
+    ;;do path compression along the path
+    (dosync (let [r (find-set p)]
+              (alter x assoc :path `(~r))
+              r))
+    ;;or, x is itself a representative
+    x))
+
+(defn equal?
+  "handle type equivalence that is complicated by type aliasing"
+  [x y]
+  (if (= x y)
+    true
+    (let [rx (find-set x) ry (find-set y)]
+      (if (= rx ry)
+        true
+        (or ;one is nil, and the other is a record or an array
+         (and (nil-expr? rx) (not (nil? (:struct @ry))))
+         (and (nil-expr? ry) (not (nil? (:struct @rx)))))))))
+
+(defn attach-struct
+  "attach to representative a type structure (array or record)"
+  [x struct]
+  (let [rx (find-set x)]
+    (assert (or (built-in? rx) (nil? (:struct @rx)))
+            "type structure conflict")
+    (dosync (alter rx assoc :struct
+                   ;;make it lazy to support recursive data
+                   (fn [] (delay struct))))))
+
+(defn- link [x y]
+  "link by rank"
+  (let [{r :rank p :path} @x
+        {s :rank q :path} @y]
+    (if (< r s)
+      (dosync (alter x assoc :path (conj q y))
+              y)
+      (dosync (alter y assoc :path (conj p x))
+              (if (= r s) (alter x assoc :rank (inc r)))
+              x))))
+
+(defn let-equal
+  "establish equivalence between the two given types; return nil"
+  [x y]
+  (let [rx (find-set x) ry (find-set y)]
+    (if (= rx ry)
+      nil
+      (let [sx (:struct @rx) sy (:struct @ry)
+            sx-nil? (nil? sx) sy-nil? (nil? sy)]
+        (assert (not (or sx-nil? sy-nil?)) "type entity conflict")
+        (cond (and sx-nil? sy-nil?) ;no structure is attached to either
+              (link rx ry)
+
+              sx-nil? ;sy is the structure
+              (-> (link rx ry) (attach-struct sy))
+
+              sy-nil? ;sx is the structure
+              (-> (link rx ry) (attach-struct sx)))))))
+
+(comment record?
+         "used at semantics/do-lvalue: ensure that field access is
+only available on value of record type."
+         "used at semantics/do-record: ensure that the given type
+name refers to a record type.")
+
+(comment array?
+         "used at semantics/do-array: ensure that the given type
+name refers to an array type."
+         "used at semantics/do-lvalue: ensure that index access is
+only available on value of array type.")
+
+(comment expr
+         "used at semantics/do-consec-ty-decl: read type expression
+and do corresponding actions at second-pass.")
+
+(comment "Concerning record:"
+         "- read [:record [['f1 't1] ['f2 't2] ...]] into a type
+structure;"
+         "- attach the type structure to a type;"
+         "- match given field name and field expression to
+corresponding field name and field type;"
+         "- get corresponding type of a given field name.")
+
+(comment "Concerning array:"
+         "- read [:array 'tid] into a type structure;"
+         "- attach the type structure to a type;"
+         "- match given type to array element type;"
+         "- get the element type.")
+
 (defn read-ty-fields [env fields]
+  (println fields)
   (loop [fs (seq fields) fv [] s #{}]
     (if (empty? fs)
       fv
@@ -74,102 +182,6 @@
         (:type fd)
         (recur (rest fds))))))
 
-(declare find-set)
-
-(defn get-entity
-  "get the type entity associated with the given type"
-  [x] (if-let [e (:entity @x)]
-        ;;if e is not nil, it should be the same as the
-        ;;entity attached to the root
-        e (:entity (deref (find-set x)))))
-
-(defn attach-entity
-  "attach a type entity created by expr to a type"
-  [x entity]
-  (assert (nil? (get-entity x)) "type entity conflict")
-  (dosync (alter x assoc :entity entity)))
-
-(defn entity-attached?
-  "determine if there is an entity attached to the given type"
-  [x] (not (nil? (get-entity x))))
-
-(declare link)
-
-(defn let-equal
-  "establish equivalence between the two given types"
-  [x y]
-  (let [xr (find-set x) yr (find-set y)]
-    (if (= xr yr)
-      (:entity @xr)
-      (let [ex (:entity @xr) ey (:entity @yr)
-            ex-nil? (nil? ex) ey-nil? (nil? ey)]
-        (assert (or ex-nil? ey-nil?) "type entity conflict")
-        (cond (and ex-nil? ey-nil?) ;no entity is attached to either
-              (link xr yr)
-
-              ex-nil? ;an entity is attached to yr
-              (-> (link xr yr) (attach-entity ey))
-
-              ey-nil? ;an entity is attached to xr
-              (-> (link xr yr) (attach-entity ex)))))))
-
-(defn equal?
-  "determine equivalence of the two given types"
-  [x y]
-  (let [xr (find-set x) yr (find-set y)]
-    (if (= xr yr)
-      true
-      (let [kx (:kind (:entity @xr))
-            ky (:kind (:entity @yr))]
-        (case [kx ky]
-          [:int :int] true
-          [:string :string] true
-          [:nil :record] true
-          [:record :nil] true
-          [:nil :array] true
-          [:array :nil] true
-          [:void :void] true
-          false)))))
-
-(defn reflect [x kind]
-  (= (:kind (get-entity x)) kind))
-
-(defn void? [x] (reflect x :void))
-(defn string? [x] (reflect x :string))
-(defn int? [x] (reflect x :int))
-(defn record? [x] (reflect x :record))
-(defn array? [x] (reflect x :array))
-
-(defn link [x y]
-  "link by rank"
-  (let [{r :rank p :path} @x
-        {s :rank q :path} @y]
-    (if (< r s)
-      (dosync (alter x assoc :path (conj q y))
-              y)
-      (dosync (alter y assoc :path (conj p x))
-              (if (= r s) (alter x assoc :rank (inc r)))
-              x))))
-
-(defn find-set
-  "find set and do path compression along the way"
-  [x]
-  (if-let [p (first (:path @x))]
-    (dosync (let [r (find-set p)]
-              (alter x assoc :path `(~r))
-              r))
-    x))
-
-(defn cons-int []
-  (let [t (init) e {:kind :int}]
-    (do (attach-entity t e) t)))
-
-(defn cons-string []
-  (let [t (init) e {:kind :string}]
-    (do (attach-entity t e) t)))
-
-(def nil-expr (ref {:rank 0 :path () :entity {:kind :nil}}))
-(def no-value (ref {:rank 0 :path () :entity {:kind :void}}))
 
 
 

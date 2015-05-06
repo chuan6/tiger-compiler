@@ -114,7 +114,7 @@
                     a (lookup-tid env header)]
                 (assert (type/entity-attached? a))
                 (recur (rest ds))))))]
-    (conj env-stack (-> env (first-pass) (second-pass) (third-pass)))))
+    (conj env-stack (-> env (first-pass) (second-pass)))))
 
 (defn do-var-decl
   ([env-stack id expr]
@@ -134,21 +134,21 @@
 (defn do-neg [env val]
   (let [t (do-expression env val)]
     (assert (type/int? t) "unary - only works on integer")
-    (lookup-tid env 'int)))
+    type/int))
 
 (defn do-or [env a b]
   (let [tya (do-expression env a)
         tyb (do-expression env b)]
     (assert (and (type/int? tya) (type/int? tyb))
             "| only works on integers")
-    (lookup-tid env 'int)))
+    type/int))
 
 (defn do-and [env a b]
   (let [tya (do-expression env a)
         tyb (do-expression env b)]
     (assert (and (type/int? tya) (type/int? tyb))
             "& only works on integers")
-    (lookup-tid env 'int)))
+    type/int))
 
 (defn do-cmp [env kind a b]
   (let [tya (do-expression env a)
@@ -158,21 +158,21 @@
     (assert (type/equal? tya tyb)
             "cannot compare between expressions of different types")
     (if (#{:eq :neq} kind)
-      (lookup-tid env 'int)
+      type/int
       (do (assert (or (type/int? tya) (type/string? tya))
                   "<, >, <=, >= only work on integers or strings")
-          (lookup-tid env 'int)))))
+          type/int))))
 
-(defn do-string [env val] (lookup-tid env 'string))
+(defn do-string [env val] type/string)
 
 (defn do-cal [env kind a b]
   (let [tya (do-expression env a)
         tyb (do-expression env b)]
     (assert (and (type/int? tya) (type/int? tyb))
             "+, -, *, / only work on integers")
-    (lookup-tid env 'int)))
+    type/int))
 
-(defn do-int [env val] (lookup-tid env 'int))
+(defn do-int [env val] type/int)
 
 (defn do-nil [env] type/nil-expr)
 
@@ -204,30 +204,30 @@
       t)))
 
 (defn do-let [env decl-list expr-seq]
-  (let [env-stack (loop [estk [env]
-                         ds (seq decl-list)]
-                    (if (empty? ds)
-                      estk
-                      (recur
-                       (let [d (first ds)]
-                         (case (d 0)
-                           :var-decl
-                           (apply do-var-decl estk (subvec d 1))
-                           :consec-ty-decl
-                           (apply do-consec-ty-decl estk (subvec d 1))
-                           :consec-fn-decl
-                           (apply do-consec-fn-decl estk (subvec d 1))
-                           ))
-                       (rest ds))))
+  (let [env-stack
+        (loop [estk [env]
+               ds (seq decl-list)]
+          (if (empty? ds)
+            estk
+            (recur
+             (let [d (first ds)]
+               (case (d 0)
+                 :var-decl
+                 (apply do-var-decl estk (subvec d 1))
+                 :consec-ty-decl
+                 (apply do-consec-ty-decl estk (subvec d 1))
+                 :consec-fn-decl
+                 (apply do-consec-fn-decl estk (subvec d 1))))
+             (rest ds))))
         env (peek env-stack)]
     (println "let environment: " env)
     (loop [es (seq expr-seq)
-           t type/no-value]
+           t type/void]
       (if (empty? es)
         t
         (recur (rest es) (do-expression env (first es)))))))
 
-(defn do-empty [env] type/no-value)
+(defn do-empty [env] type/void)
 
 (defn do-lvalue [env kind & args]
   (case kind
@@ -260,11 +260,11 @@
   (let [ta (do-expression env lval)
         tb (do-expression env expr)]
     (assert (type/equal? ta tb))
-    type/no-value))
+    type/void))
 
 (defn do-seq [env expr-seq]
   (loop [es (seq expr-seq)
-         t type/no-value]
+         t type/void]
     (if (empty? es)
       t
       (recur (rest es) (do-expression env (first es))))))
@@ -275,7 +275,7 @@
          ta (do-expression env then)]
      (assert (type/int? t) "cond-expr must be of int type")
      (assert (type/void? ta) then)
-     type/no-value))
+     type/void))
   ([env cond then else]
    (let [t (do-expression env cond)]
      (assert (type/int? t) "cond-expr must be of int type")
@@ -284,7 +284,7 @@
        (assert (type/equal? ta tb)
                "types of then-expr and eles-expr don't match")
        (if (type/void? ta)
-         type/no-value
+         type/void
          (let [fa (= ta type/nil-expr)
                fb (= tb type/nil-expr)]
            (case [fa fb]
@@ -298,7 +298,7 @@
         t (do-expression env loop)]
     (assert (type/int? tc) "cond-expr must be of int type")
     (assert (type/void? t) "loop-expr must produce no value")
-    type/no-value))
+    type/void))
 
 ;;TODO ensure that id is not assigned to in loop body
 (defn do-for [env id from to loop]
@@ -307,10 +307,10 @@
     (assert (and (type/int? ta) (type/int? tb))
             "loop index range must be of int type")
     (let [loop-env (assoc-id env id
-                             {:type (lookup-tid env 'int)})
+                             {:type type/int})
           t (do-expression loop-env loop)]
       (assert (type/void? t) "loop-expr must produce no value")
-      type/no-value)))
+      type/void)))
 
 (defn do-call [env id expr-list]
   (let [entity (lookup-id env id)]
@@ -331,7 +331,7 @@
                     (do (assert (type/equal? (:type p) ta)
                                 "argument type doesn't match")
                         (recur (rest ps) (rest as)))))))
-            type/no-value)
+            type/void)
         :function
         (do (let [pv (:params entity)
                   av expr-list]
@@ -350,9 +350,6 @@
 
 (defn do-expression [env expr]
   (let [f (case (expr 0)
-            :consec-ty-decl do-consec-ty-decl
-            :var-decl do-var-decl
-            :consec-fn-decl do-consec-fn-decl
             :assign do-assign
             :empty do-empty
             :array do-array
