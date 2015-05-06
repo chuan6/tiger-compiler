@@ -90,31 +90,35 @@
                 (recur (assoc-tid env header (type/init))
                        (rest ds) (conj s header))))))
 
-        second-pass ;attach type entities
+        second-pass ;attach type structures
         (fn [env] ;note: change through side-effects
           (loop [ds ds]
             (if (empty? ds)
               env
               (let [[action header body] (first ds)
+                    kind (body 0)
                     a (lookup-tid env header)]
-                (do (if-let [entity (type/expr env body)]
-                      ;;type is defined by a concrete type
-                      (type/attach-entity a entity)
-                      ;;type is an alias of a non-built-in type
-                      (let [b (lookup-tid env (body 1))]
-                        (type/let-equal a b)))
+                (do (case kind
+                      :alias  (let [b (lookup-tid env (body 1))]
+                                (assert b (str (body 1) " is not an"
+                                               "existing type"))
+                                (type/let-equal b a))
+                      :array  (type/cons-array a body env)
+                      :record (type/cons-record a body env))
                     (recur (rest ds)))))))
 
-        third-pass ;check if every type name has a type entity attached
+        third-pass ;check if every type name has a type struct attached
         (fn [env]
           (loop [ds ds]
             (if (empty? ds)
               env
               (let [header ((first ds) 1)
                     a (lookup-tid env header)]
-                (assert (type/entity-attached? a))
+                (assert (or (type/int? a) (type/string? a)
+                            (type/struct-attached? a))
+                        (str "type " header " is not realized"))
                 (recur (rest ds))))))]
-    (conj env-stack (-> env (first-pass) (second-pass)))))
+    (conj env-stack (-> env (first-pass) (second-pass) (third-pass)))))
 
 (defn do-var-decl
   ([env-stack id expr]
@@ -179,7 +183,7 @@
 (defn do-record [env tid fv]
   (let [t (lookup-tid env tid)]
     (assert (type/record? t) (str "expect " t " to be record"))
-    (let [template (:fieldv (type/get-entity t))]
+    (let [template (type/get-record-fieldv t)]
       (assert (= (count fv) (count template))
               "number of fields doesn't match")
       (loop [fs (seq fv) ts (seq template)]
@@ -187,7 +191,7 @@
           t
           (let [[fn expr] (first fs)
                 et (do-expression env expr)
-                {nm :name ty :type} (first ts)]
+                [nm ty] (first ts)]
             (assert (= fn nm) "field name doesn't match")
             (assert (type/equal? ty et) "field type doesn't match")
             (recur (rest fs) (rest ts))))))))
@@ -196,7 +200,7 @@
   (let [t (lookup-tid env tid)]
     (assert (type/array? t) (str "expect " t " to be array"))
     (let [tylen (do-expression env len)
-          tyelem (:elem-type (type/get-entity t))
+          tyelem (type/get-array-elem-type t)
           tyinit (do-expression env init)]
       (assert (type/int? tylen) "found non-integer array length")
       (assert (type/equal? tyelem tyinit)
@@ -242,7 +246,7 @@
           t (do-expression env prefix)]
       (assert (type/record? t)
               "cannot access field of a non-record value")
-      (let [fdt (type/get-record-field (type/get-entity t) fdn)]
+      (let [fdt (type/get-record-field-type t fdn)]
         (assert (not (nil? fdt)) "no such field name for the type")
         fdt))
 
@@ -251,7 +255,7 @@
           t (do-expression env prefix)]
       (assert (type/array? t)
               "cannot access by index for a non-array value")
-      (let [elmt (type/get-array-elem-type (type/get-entity t))
+      (let [elmt (type/get-array-elem-type t)
             ti (do-expression env idx)]
         (assert (type/int? ti) "expect array index to be an integer")
         elmt))))

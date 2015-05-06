@@ -68,7 +68,13 @@
             "type structure conflict")
     (dosync (alter rx assoc :struct
                    ;;make it lazy to support recursive data
-                   (fn [] (delay struct))))))
+                   (fn [] (delay struct)))
+            ;;return nil as a procedure
+            nil)))
+
+(defn struct-attached? [x]
+  (let [rx (find-set x)]
+    (not (nil? (:struct @rx)))))
 
 (defn- link [x y]
   "link by rank"
@@ -129,9 +135,8 @@ corresponding field name and field type;"
          "- match given type to array element type;"
          "- get the element type.")
 
-(defn read-ty-fields [env fields]
-  (println fields)
-  (loop [fs (seq fields) fv [] s #{}]
+(defn read-ty-fields [env fieldv]
+  (loop [fs (seq fieldv) fv [] s #{}]
     (if (empty? fs)
       fv
       (let [[name tid] (first fs)
@@ -143,45 +148,68 @@ corresponding field name and field type;"
                (conj fv {:name name :type type})
                (conj s name))))))
 
-(defn expr
-  "create a type entity according to the given type expression"
-  [env ty-expr]
-  (let [[label body] ty-expr]
-    (case label
-      :alias
-      (condp = body
-        'int {:kind :int}
-        'string {:kind :string}
-        nil)
+(defn cons-record
+  "construct a record type structure from the given ty-expression
+  and attach it to the existing type x"
+  [x rec-ty-expr env]
+  (let [label (rec-ty-expr 0)]
+    (assert (= label :record) "expect record type expression")
+    (let [fv (rec-ty-expr 1)
+          st {:kind :record
+              :fieldv (read-ty-fields env fv)}]
+      (attach-struct x st))))
 
-      :array
-      {:kind :array
-       :elem-type (let [tid body
-                        type (get (:ty-id env) tid)]
-                    (assert type
-                            "array element expect existing type")
-                    type)}
+(defn record? [x]
+  (let [rx (find-set x)]
+    (if-let [st (:struct @rx)]
+      (= (:kind (force (st))) :record)
+      false)))
 
-      :record
-      {:kind :record
-       :fieldv (read-ty-fields env body)})))
+(defn get-record-fieldv
+  "return [['f1 't1] ['f2 't2] ...] for the given record"
+  [x]
+  (let [rx (find-set x)
+        st (:struct @rx)
+        fv (:fieldv (force (st)))]
+    (loop [v [] fs (seq fv)]
+      (if (empty? fs)
+        v
+        (let [{nm :name ty :type} (first fs)]
+          (recur (conj v [nm ty]) (rest fs)))))))
+
+(defn get-record-field-type
+  "return field type for the field name of the given record type"
+  [x fdnm]
+  (let [rx (find-set x)
+        st (:struct @rx)
+        fv (:fieldv (force (st)))]
+    (loop [fs (seq fv)]
+      (when-let [f (first fs)]
+        (if (= (:name f) fdnm)
+          (:type f)
+          (recur (rest fs)))))))
+
+(defn cons-array
+  "construct an array type structure from the given ty-expression
+  and attach it to the existing type x"
+  [x arr-ty-expr env]
+  (let [label (arr-ty-expr 0)]
+    (assert (= label :array) "expect array type expression")
+    (let [etid (arr-ty-expr 1)
+          et (get (:ty-id env) etid)]
+      (assert et (str etid " is not an existing type here"))
+      (let [st {:kind :array :elem-type et}]
+        (attach-struct x st)))))
+
+(defn array? [x]
+  (let [rx (find-set x)]
+    (if-let [st (:struct @rx)]
+      (= (:kind (force (st))) :array)
+      false)))
 
 (defn get-array-elem-type
-  [entity]
-  (assert (= (:kind entity) :array))
-  (assert (contains? entity :elem-type))
-  (:elem-type entity))
-
-(defn get-record-field
-  [entity field]
-  (assert (= (:kind entity) :record))
-  (assert (contains? entity :fieldv))
-  (loop [fds (seq (:fieldv entity))]
-    (when-let [fd (first fds)]
-      (if (= field (:name fd))
-        (:type fd)
-        (recur (rest fds))))))
-
-
-
-
+  "return element type for the given array"
+  [x]
+  (let [rx (find-set x)
+        st (:struct @rx)]
+    (:elem-type (force (st)))))
