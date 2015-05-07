@@ -2,15 +2,6 @@
 
 ;;;Implements the disjoint-set forest data structure.
 
-;;;A valid one would include one or many sets, each represented by a tree.
-;;;Each tree organizes a number of type names; no two trees share type names,
-;;;and any two type names within the same tree are equivalent.
-
-;;;At each snapshot of the data structure, root of each tree should have a
-;;;reference to an entity of type expression, be it int, string, record, or
-;;;array. A tree whose root doesn't have such a reference is invalid,
-;;;indicating an appearance of alias definition cycle.
-
 (def kind-set
   #{:void :int :string :nil :record :array :alias})
 

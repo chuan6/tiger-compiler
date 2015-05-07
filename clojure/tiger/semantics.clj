@@ -3,6 +3,12 @@
 (declare do-expression)
 
 (defn assoc-id [env id entity]
+  (assert (#{:variable   ;l-value
+             :loop-index ;for-loop index
+             :procedure  ;call with no return
+             :function   ;call with return
+             } (:kind entity))
+          "unknown kind of entity")
   (let [prev (:id env)]
     (assoc env :id (assoc prev id entity))))
 
@@ -261,10 +267,19 @@
         elmt))))
 
 (defn do-assign [env lval expr]
-  (let [ta (do-expression env lval)
-        tb (do-expression env expr)]
-    (assert (type/equal? ta tb))
-    type/void))
+  (let [assign-to-loop-index?
+        (fn []
+          (if (= (lval 1) :simple) ;loop index is a :simple var
+            (let [id (lval 2)
+                  entity (lookup-id env id)]
+              (= (:kind entity) :loop-index))
+            false))]
+    (assert (not (assign-to-loop-index?))
+            "for-loop index must NOT be assigned to")
+    (let [ta (do-expression env lval)
+          tb (do-expression env expr)]
+      (assert (type/equal? ta tb))
+      type/void)))
 
 (defn do-seq [env expr-seq]
   (loop [es (seq expr-seq)
@@ -304,14 +319,12 @@
     (assert (type/void? t) "loop-expr must produce no value")
     type/void))
 
-;;TODO ensure that id is not assigned to in loop body
 (defn do-for [env id from to loop]
   (let [ta (do-expression env from)
         tb (do-expression env to)]
     (assert (and (type/int? ta) (type/int? tb))
             "loop index range must be of int type")
-    (let [loop-env (assoc-id env id
-                             {:type type/int})
+    (let [loop-env (assoc-id env id {:kind :loop-index :type type/int})
           t (do-expression loop-env loop)]
       (assert (type/void? t) "loop-expr must produce no value")
       type/void)))
