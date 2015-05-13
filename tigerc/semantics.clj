@@ -1,5 +1,40 @@
 (ns semantics)
 
+(def init-env
+  {:ty-id {'int type/int 'string type/string}
+   :id {'print     {:kind :procedure
+                    :params [{:name 's :type type/string}]}
+        'printi    {:kind :procedure
+                    :params [{:name 'i :type type/int}]}
+        'flush     {:kind :procedure
+                    :params []}
+        'getchar   {:kind :function
+                    :return type/string
+                    :params []}
+        'ord       {:kind :function
+                    :return type/int
+                    :params [{:name 's :type type/string}]}
+        'chr       {:kind :function
+                    :return type/string
+                    :params [{:name 'i :type type/int}]}
+        'size      {:kind :function
+                    :return type/int
+                    :params [{:name 's :type type/string}]}
+        'substring {:kind :function
+                    :return type/string
+                    :params [{:name 's :type type/string}
+                             {:name 'f :type type/int}
+                             {:name 'n :type type/int}]}
+        'concat    {:kind :function
+                    :return type/string
+                    :params [{:name 's1 :type type/string}
+                             {:name 's2 :type type/string}]}
+        'not       {:kind :function
+                    :return type/int
+                    :params [{:name 'i :type type/int}]}
+        'exit      {:kind :procedure
+                    :params [{:name 'i :type type/int}]}}})
+
 (declare do-expression)
 
 (defn assoc-id [env id entity]
@@ -122,7 +157,7 @@
                     a (lookup-tid env header)]
                 (assert (or (type/int? a) (type/string? a)
                             (type/struct-attached? a))
-                        (str "type " header " is not realized"))
+                        (str "type " header " is not realized" env))
                 (recur (rest ds))))))]
     (conj env-stack (-> env (first-pass) (second-pass) (third-pass)))))
 

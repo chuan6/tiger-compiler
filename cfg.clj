@@ -469,15 +469,16 @@
        (loop [ts (seq (conj token-v {:token end-marker})) ;token queue
               ss [init] ;state stack
               treev []] ;parse tree stack
+         (print ss "\t")
          (if (empty? ts) ;not suppose to happen
            (do (println ss)  treev)
            (let [t (first ts) s (peek ss)
                  a (atab s (:token t))]
              (case (:action a)
                :shift
-               (do ;;(println a)
-                 (recur (rest ts) (conj ss (:state a))
-                        (conj treev t)))
+               (do (println a)
+                   (recur (rest ts) (conj ss (:state a))
+                          (conj treev t)))
 
                :reduce
                (let [p (:production a)
@@ -486,6 +487,7 @@
                  (recur ts
                         (let [n (count ss)
                               ss (subvec ss 0 (- n m))]
+                          (println nt ((nt (:productions g)) (:nth p)))
                           (conj ss (gtab (peek ss) nt)))
                         (let [n (count treev)
                               i (- n m)
@@ -499,17 +501,3 @@
 
                (println "hit nil entry:" t "at" s "tree" treev)))))))))
 
-(defn print-tree
-  ([t] (print-tree t 0))
-  ([t nth] ;nth controls the amount of indentation
-   (assert (vector? t))
-   (println (apply str (conj (repeat nth " ") nth)) (t 0))
-   (let [childv (subvec t 1) n (count childv)
-         nth (inc nth)]
-     (loop [i 0]
-       (if (< i n)
-         (do (let [child (childv i)]
-               (if (vector? child)
-                 (print-tree child nth)
-                 (println (apply str (conj (repeat nth " ") nth)) child)))
-             (recur (inc i))))))))

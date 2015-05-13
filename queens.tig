@@ -1,6 +1,7 @@
-let /* The eight queens solver from Appel */
+let /* The eight/* queens */solver from Appel */
   var N := 8
-  type intArray = array of int
+  type myint = int
+  type intArray = array of myint
   var row := intArray [ N ] of 0
   var col := intArray [ N ] of 0
   var diag1 := intArray [ N+N-1 ] of 0
@@ -13,7 +14,7 @@ let /* The eight queens solver from Appel */
          print("\n"));
      print("\n"))
 
-  function try(c:int) =
+  function try(c:myint) =
     if c=N then printboard()
     else for r := 0 to N-1
          do if row[r]=0 &

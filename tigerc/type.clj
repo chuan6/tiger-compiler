@@ -28,7 +28,7 @@
 
 (defn built-in? [x] (or (int? x) (string? x) (nil-expr? x) (void? x)))
 
-(defn- find-set
+(defn find-set
   "find the representative and do path compression along the way"
   [x]
   (if-let [p (first (:path @x))]
@@ -86,7 +86,7 @@
       nil
       (let [sx (:struct @rx) sy (:struct @ry)
             sx-nil? (nil? sx) sy-nil? (nil? sy)]
-        (assert (not (or sx-nil? sy-nil?)) "type entity conflict")
+        (assert (or sx-nil? sy-nil?) "type entity conflict")
         (cond (and sx-nil? sy-nil?) ;no structure is attached to either
               (link rx ry)
 

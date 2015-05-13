@@ -13,7 +13,7 @@ Notable features:
 
 - on context-free grammar processing (clojure/cfg.clj):
   - grammar structure validation (useful when a terminal is misspelled);
-  - FIRST, and FOLLOW;
+  - FIRST, and FOLLOW (both can work on grammar with left recursion);
   - construction of canonical collection from given grammar;
   - query on canonical collection, item-by-state, or state-by-item;
   - construction of action table, and goto table from given canonical
