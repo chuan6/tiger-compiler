@@ -1,8 +1,6 @@
-# A Tiger Compiler (front-end)
+**A Tiger Compiler Front-end in Clojure**
 
-...including a simple LR parser.
-
-## Notable features:
+Notable features:
 
 - on **tokenzier** (tigerc/tokenizer.clj):
   - nested comment;
