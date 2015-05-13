@@ -1,4 +1,4 @@
-**A Tiger Compiler Front-end in Clojure**
+# A Tiger Compiler Front-end in Clojure
 
 Notable features:
 
