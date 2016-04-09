@@ -26,30 +26,22 @@
   (print-method (seq queue) writer)
   (print-method '-< writer))
 
-(defn tree-insert [tree key comp-fn]
-  (if tree
-    (let [c (comp-fn key (:key tree))]
-      (cond (< c 0) (assoc tree :left
-                           (tree-insert (:left tree) key comp-fn))
-            (> c 0) (assoc tree :right
-                           (tree-insert (:right tree) key comp-fn))
-            :else tree))
-    {:key key :left nil :right nil}))
+(defn keyword-recognizer
+  {:test
+   #(let [kwords     (map name token-keyword)
+          non-kwords (map (partial str "1") kwords)]
+      (assert (empty? (clojure.set/intersection (set kwords)
+                                                (set non-kwords)))
+       "ineffective test!")
+      (doall
+       (concat
+        (for [kw kwords]
+          (assert (contains? token-keyword (keyword-recognizer kw))))
+        (for [nkw non-kwords]
+          (assert (nil? (keyword-recognizer nkw)))))))}
 
-(defn tree-search [tree key comp-fn]
-  (if tree
-    (let [c (comp-fn key (:key tree))]
-      (cond (< c 0) (tree-search (:left tree) key comp-fn)
-            (> c 0) (tree-search (:right tree) key comp-fn)
-            :else (:key tree)))))
-
-(defn keyword-recognizer [s]
-  (let [insert (fn [tree key]
-                 (tree-insert tree key (fn [x y] (compare (str x) (str y)))))
-        search (fn [tree key]
-                 (tree-search tree key (fn [x y] (compare x (str y)))))
-        kwords (reduce insert nil token-keyword)]
-    (search kwords (str (keyword s)))))
+  [s]
+  (token-keyword (keyword s)))
 
 (defn id-recognizer [curr]
   (let [s (:char-seq curr)
