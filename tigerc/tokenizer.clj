@@ -26,24 +26,44 @@
   (print-method (seq queue) writer)
   (print-method '-< writer))
 
-(defn keyword-recognizer
+(defn get-keyword
+  "recognize an id token as an existing keyword, or nil"
   {:test
    #(let [kwords     (map name token-keyword)
           non-kwords (map (partial str "1") kwords)]
       (assert (empty? (clojure.set/intersection (set kwords)
                                                 (set non-kwords)))
-       "ineffective test!")
+              "ineffective test!")
       (doall
        (concat
         (for [kw kwords]
-          (assert (contains? token-keyword (keyword-recognizer kw))))
+          (assert (contains? token-keyword (get-keyword kw))))
         (for [nkw non-kwords]
-          (assert (nil? (keyword-recognizer nkw)))))))}
+          (assert (nil? (get-keyword nkw)))))))}
 
   [s]
   (token-keyword (keyword s)))
 
-(defn id-recognizer [curr]
+(defn id-recognizer
+  {:test
+   #(let [ids    ["x" "x1" "x_1" "x_1_"]
+          kwords (map name token-keyword)]
+      (assert (empty? (clojure.set/intersection (set ids)
+                                                (set kwords)))
+              "ineffective test!")
+      (doall
+       (concat
+        (for [id ids]
+          (assert (= {:char-seq ()
+                      :token-seq (conj token-queue {:token :id :name id})
+                      (id-recognizer {:char-seq (seq id)
+                                      :token-seq token-queue})})))
+        (for [kw kwords]
+          (assert (= {:char-seq ()
+                      :token-seq (conj token-queue {:token (keyword kw)})}
+                     (id-recognizer {:char-seq (seq kw)
+                                     :token-seq token-queue})))))))}
+  [curr]
   (let [s (:char-seq curr)
         c (first s)]
     (assert (Character/isLetter c))
@@ -53,7 +73,7 @@
         (if (and c (or (Character/isLetterOrDigit c) (= c \_)))
           (recur (rest s) (conj t c))
           (let [token (str/join t)
-                kword (keyword-recognizer token)]
+                kword (get-keyword token)]
             (if kword
               {:char-seq s :token-seq (conj (:token-seq curr)
                                             {:token kword})}
