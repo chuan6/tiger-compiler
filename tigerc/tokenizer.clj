@@ -27,7 +27,7 @@
   (print-method '-< writer))
 
 (defn get-keyword
-  "recognize an id token as an existing keyword, or nil"
+  "get corresponding keyword, otherwise nil, for a token"
   {:test
    #(let [kwords     (map name token-keyword)
           non-kwords (map (partial str "1") kwords)]
@@ -55,9 +55,9 @@
        (concat
         (for [id ids]
           (assert (= {:char-seq ()
-                      :token-seq (conj token-queue {:token :id :name id})
-                      (id-recognizer {:char-seq (seq id)
-                                      :token-seq token-queue})})))
+                      :token-seq (conj token-queue {:token :id :name id})}
+                     (id-recognizer {:char-seq (seq id)
+                                     :token-seq token-queue}))))
         (for [kw kwords]
           (assert (= {:char-seq ()
                       :token-seq (conj token-queue {:token (keyword kw)})}
@@ -80,7 +80,24 @@
               {:char-seq s :token-seq (conj (:token-seq curr)
                                             {:token :id :name token})})))))))
 
-(defn digits-recognizer [curr]
+(defn digits-recognizer
+  {:test
+   #(let [all-digits ["0" "1" "123" "123"]
+          tail "f"
+          with-non-digit-tail (map (fn [ds] (str ds tail)) all-digits)]
+      (doall
+       (concat
+        (for [ds all-digits]
+          (assert (= {:char-seq ()
+                      :token-seq (conj token-queue {:token :digits :value ds})}
+                     (digits-recognizer {:char-seq (seq ds)
+                                         :token-seq token-queue}))))
+        (for [ts with-non-digit-tail]
+          (let [ret (digits-recognizer {:char-seq (seq ts)
+                                        :token-seq token-queue})]
+            (assert (= (:char-seq ret) (seq tail)))
+            (assert (= (str (:value (peek (:token-seq ret))) tail) ts)))))))}
+  [curr]
   (let [s (:char-seq curr)
         c (first s)]
     (assert (Character/isDigit c))
