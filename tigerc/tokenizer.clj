@@ -98,8 +98,8 @@
           [s {:token :digits :value (str/join t)}])))))
 
 (defn string-recognizer
-  {:test ;TODO add test case: string with escaped quotes
-   #(let [strings ["\"\"" "\"hello, world\""]
+  {:test
+   #(let [strings ["\"\"" "\"say\"" "\"say \\\"hello, world!\\\"\""]
           missing-closing-quote (map (fn [s]
                                        (subs s 0 (dec (count s))))
                                      strings)
@@ -108,7 +108,7 @@
       (doall
        (concat
         (for [s strings]
-          (assert (= [() {:token :string :value (read-string s)}]
+          (assert (= [() {:token :string :value (subs s 1 (dec (count s)))}]
                      (string-recognizer (seq s)))))
         (for [m missing-closing-quote]
           (assert (= [(seq m)]
