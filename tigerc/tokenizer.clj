@@ -205,15 +205,19 @@
             (do (println "missing comment closing")
                 [source])))))))
 
-(defn skip-spaces [curr]
-  (let [s (:char-seq curr)
-        c (first s)]
+(defn skip-spaces
+  {:test
+   #(let [left-paddings [" " "  " "\t" "\n" " \n\t"]
+          result "x = 0"
+          strings (for [lp left-paddings]
+                    (str lp result))]
+      (doall
+       (for [s strings]
+         (assert (= [(seq result)] (skip-spaces (seq s)))))))}
+  [source]
+  (let [c (first source)]
     (assert (Character/isWhitespace c))
-    (loop [s (rest s)]
-      (let [c (first s)]
-        (if (and c (Character/isWhitespace c))
-          (recur (rest s))
-          (assoc curr :char-seq s))))))
+    [(seq (str/triml (str/join source)))]))
 
 (defn tokenize-str [s]
   (assert (string? s))
