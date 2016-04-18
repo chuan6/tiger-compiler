@@ -164,7 +164,10 @@
                 "/*hello*/"
                 "/*hello\nworld*/"
                 "/*comment looks like this: /*...*/*/"]
-          missing-closing (map (comp (partial str "/*") carve-out) cmts)
+          ambiguous ["/*/" "/*/*/"]
+          missing-closing (->> cmts
+                               (map (comp (partial str "/*") carve-out))
+                               (concat ambiguous))
           tail "*/"
           with-tail (map (fn [s] (str s tail)) cmts)]
       (doall
