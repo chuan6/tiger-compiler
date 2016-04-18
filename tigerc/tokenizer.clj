@@ -217,7 +217,7 @@
   [source]
   (let [c (first source)]
     (assert (Character/isWhitespace c))
-    [(seq (str/triml (str/join source)))]))
+    [(drop-while #(Character/isWhitespace %) source)]))
 
 (defn tokenize-str [s]
   (assert (string? s))
