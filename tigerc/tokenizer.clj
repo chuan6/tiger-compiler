@@ -248,6 +248,7 @@
      \& (helper :and 1)
      \| (helper :pipe 1))))
 
+;;TODO add test and enforce termination condition
 (defn tokenize-str [s]
   (assert (string? s))
   (let [inject (fn [recognizer curr]
