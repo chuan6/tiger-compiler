@@ -54,20 +54,15 @@
       (doall
        (concat
         (for [id ids]
-          (assert (= {:char-seq ()
-                      :token-seq (conj token-queue {:token :id :name id})}
-                     (id-recognizer {:char-seq (seq id)
-                                     :token-seq token-queue}))))
+          (assert (= [() {:token :id :name id}]
+                     (id-recognizer (seq id)))))
         (for [kw kwords]
-          (assert (= {:char-seq ()
-                      :token-seq (conj token-queue {:token (keyword kw)})}
-                     (id-recognizer {:char-seq (seq kw)
-                                     :token-seq token-queue})))))))}
-  [curr]
-  (let [s (:char-seq curr)
-        c (first s)]
+          (assert (= [() {:token (keyword kw)}]
+                     (id-recognizer (seq kw))))))))}
+  [source]
+  (let [c (first source)]
     (assert (Character/isLetter c))
-    (loop [s (rest s)
+    (loop [s (rest source)
            t [c]]
       (let [c (first s)]
         (if (and c (or (Character/isLetterOrDigit c) (= c \_)))
@@ -75,10 +70,8 @@
           (let [token (str/join t)
                 kword (get-keyword token)]
             (if kword
-              {:char-seq s :token-seq (conj (:token-seq curr)
-                                            {:token kword})}
-              {:char-seq s :token-seq (conj (:token-seq curr)
-                                            {:token :id :name token})})))))))
+              [s {:token kword}]
+              [s {:token :id :name token}])))))))
 
 (defn digits-recognizer
   {:test
@@ -88,161 +81,207 @@
       (doall
        (concat
         (for [ds all-digits]
-          (assert (= {:char-seq ()
-                      :token-seq (conj token-queue {:token :digits :value ds})}
-                     (digits-recognizer {:char-seq (seq ds)
-                                         :token-seq token-queue}))))
+          (assert (= [() {:token :digits :value ds}]
+                     (digits-recognizer (seq ds)))))
         (for [ts with-non-digit-tail]
-          (let [ret (digits-recognizer {:char-seq (seq ts)
-                                        :token-seq token-queue})]
-            (assert (= (:char-seq ret) (seq tail)))
-            (assert (= (str (:value (peek (:token-seq ret))) tail) ts)))))))}
-  [curr]
-  (let [s (:char-seq curr)
-        c (first s)]
+          (let [[s t] (digits-recognizer (seq ts))]
+            (assert (= s (seq tail)))
+            (assert (= (str (:value t) tail) ts)))))))}
+  [source]
+  (let [c (first source)]
     (assert (Character/isDigit c))
-    (loop [s (rest s)
+    (loop [s (rest source)
            t [c]]
       (let [c (first s)]
         (if (and c (Character/isDigit c))
           (recur (rest s) (conj t c))
-          {:char-seq s :token-seq (conj (:token-seq curr)
-                                        {:token :digits
-                                         :value (str/join t)})})))))
+          [s {:token :digits :value (str/join t)}])))))
 
-(defn string-recognizer [curr]
-  (let [s (:char-seq curr) q (:token-seq curr)
-        c (first s)]
+(defn string-recognizer
+  {:test
+   #(let [strings ["\"\"" "\"say\"" "\"say \\\"hello, world!\\\"\""]
+          missing-closing-quote (map (fn [s]
+                                       (subs s 0 (dec (count s))))
+                                     strings)
+          tail " "
+          with-tail (map (fn [s] (str s tail)) strings)]
+      (doall
+       (concat
+        (for [s strings]
+          (assert (= [() {:token :string :value (subs s 1 (dec (count s)))}]
+                     (string-recognizer (seq s)))))
+        (for [m missing-closing-quote]
+          (assert (= [(seq m)]
+                     (string-recognizer (seq m)))))
+        (for [ts with-tail]
+          (let [[s t] (string-recognizer (seq ts))]
+            (assert (= s (seq tail)))
+            (assert (= (str \" (:value t) \" tail) ts)))))))}
+  [source]
+  (let [c (first source)]
     (assert (= c \"))
-    (let [suc (second s)]
+    (let [suc (second source)]
       (case suc
         \"
-        {:char-seq (rest (rest s))
-         :token-seq (conj q {:token :string :value ""})}
+        [(rest (rest source)) {:token :string :value ""}]
 
         nil
         (do (println "String misses closing double-quote.")
-            (assoc curr :char-seq ()))
+            [source])
 
-        (loop [s (rest s)
+        (loop [s (rest source)
                t [suc]
                consecutive-backslash-count 0]
           (assert (not (empty? s)))
           (if (empty? (rest s))
             (do (println "String" (str/join t)
                          "misses closing double quote.")
-                (assoc curr :char-seq ()))
+                [source])
             (let [c   (first s)
                   suc (second s) ;suc is non-nil
                   cbc (if (= c \\) (inc consecutive-backslash-count)
                           0)]
               (if (and (= suc \") (even? cbc))
-                {:char-seq (rest (rest s))
-                 :token-seq (conj q {:token :string :value (str/join t)})}
+                [(rest (rest s)) {:token :string :value (str/join t)}]
                 (recur (rest s) (conj t suc) cbc)))))))))
 
-;;Note: as defined, comment supports nesting.
-(defn comment-recognizer [curr ignore?]
-  (let [s (:char-seq curr)]
-    (assert (and (= (first s) \/) (= (second s) \*)))
-    (loop [s (rest (rest s))
-           t []
-           flag-count 1] ;the number of comment opennings to be closed
-      (if (or (empty? s) (empty? (rest s)))
-        (do (println "Comment"
-                     (str/join (if (empty? s) t (conj t (first s))))
-                     "misses closing.")
-            (assoc curr :char-seq ())) ;the problematic token is not recorded
-        (let [c   (first s)
-              suc (second s)]
-          (cond (and (= c \*) (= suc \/)) ;closing
-                (let [flag-count (dec flag-count)]
-                  (if (= flag-count 0)
-                    (let [curr (assoc curr :char-seq (rest (rest s)))]
-                      (if ignore?
-                        curr
-                        (assoc curr :token-seq
-                               (conj (:token-seq curr)
-                                     {:token :comment :value (str/join t)}))))
-                    (recur (rest (rest s)) ;note pattern */*
-                           (-> t (conj c) (conj suc))
-                           flag-count)))
+(def comment-opening [\/ \*])
+(def comment-closing [\* \/])
+(defn comment-recognizer
+  {:test
+   #(let [carve-out (fn [cmt] (subs cmt 2 (- (count cmt) 2)))
+          cmts ["/**/"
+                "/*hello*/"
+                "/*hello\nworld*/"
+                "/*comment looks like this: /*...*/*/"]
+          ambiguous ["/*/" "/*/*/"]
+          missing-closing (->> cmts
+                               (map (comp (partial str "/*") carve-out))
+                               (concat ambiguous))
+          tail "*/"
+          with-tail (map (fn [s] (str s tail)) cmts)]
+      (doall
+       (concat
+        (for [cmt cmts]
+          (assert (= [() {:token :comment :value (carve-out cmt)}]
+                     (comment-recognizer (seq cmt)))))
+        (for [m missing-closing]
+          (assert (= [(seq m)]
+                     (comment-recognizer (seq m)))))
+        (for [ts with-tail]
+          (let [[s t] (comment-recognizer (seq ts))]
+            (assert (= s (seq tail)))
+            (assert (= (str "/*" (:value t) "*/" tail) ts)))))))}
+  [source]
+  (let [[s0 s1 & smore] source]
+    (assert (= [s0 s1] comment-opening))
+    (let [pairs (as-> smore $
+                     (concat $ [\space]) ;left-shifted
+                     (partition 2 1 $))]
+      (letfn [(recursive-cmt-reader [pairs]
+                (loop [[p & pmore :as ps] pairs
+                       cv []]
+                  (cond
+                    (empty? ps)
+                    [ps cv false]
 
-                (and (= c \/) (= suc \*)) ;openning
-                (let [flag-count (inc flag-count)]
-                  (recur (rest (rest s)) ;note pattern /*/
-                         (-> t (conj c) (conj suc))
-                         flag-count))
+                    (= p comment-closing)
+                    [(rest pmore) cv true]
 
-                :else (recur (rest s) (conj t c) flag-count)))))))
+                    (= p comment-opening)
+                    (let [[ps' cv'] (recursive-cmt-reader (rest pmore))]
+                      (recur ps' (into cv (concat comment-opening
+                                                  cv'
+                                                  comment-closing))))
 
-(defn skip-spaces [curr]
-  (let [s (:char-seq curr)
-        c (first s)]
+                    :else
+                    (recur pmore (conj cv (first p))))))]
+        (let [[remaining-pairs
+               collected-cmt
+               with-closing?] (recursive-cmt-reader pairs)]
+          (if with-closing?
+            [(map first remaining-pairs)
+             {:token :comment :value (str/join collected-cmt)}]
+            (do (println "missing comment closing")
+                [source])))))))
+
+(defn skip-spaces
+  {:test
+   #(let [left-paddings [" " "  " "\t" "\n" " \n\t"]
+          result "x = 0"
+          strings (for [lp left-paddings]
+                    (str lp result))]
+      (doall
+       (for [s strings]
+         (assert (= [(seq result)] (skip-spaces (seq s)))))))}
+  [source]
+  (let [c (first source)]
     (assert (Character/isWhitespace c))
-    (loop [s (rest s)]
-      (let [c (first s)]
-        (if (and c (Character/isWhitespace c))
-          (recur (rest s))
-          (assoc curr :char-seq s))))))
+    [(drop-while #(Character/isWhitespace %) source)]))
+
+(defn punct-recognizer [[c c' :as source]]
+  (let [helper (fn [sym forward]
+                 [(nthrest source forward) {:token sym}])]
+   (case c
+     \/ (helper :slash 1)
+     \, (helper :comma 1)
+     \: (if (and c' (= c' \=))
+          (helper :assign 2)
+          (helper :colon 1))
+     \; (helper :semi-colon 1)
+     \( (helper :open-paren 1)
+     \) (helper :close-paren 1)
+     \[ (helper :open-bracket 1)
+     \] (helper :close-bracket 1)
+     \{ (helper :open-brace 1)
+     \} (helper :close-brace 1)
+     \. (helper :period 1)
+     \+ (helper :plus 1)
+     \- (helper :minus 1)
+     \* (helper :star 1)
+     \= (helper :equal 1)
+     \< (cond (and c' (= c' \>)) (helper :diamond 2)
+              (and c' (= c' \=)) (helper :leq 2)
+              :else (helper :lt 1))
+     \> (if (and c' (= c' \=)) (helper :geq 2)
+            (helper :gt 1))
+     \& (helper :and 1)
+     \| (helper :pipe 1))))
 
 (defn tokenize-str [s]
   (assert (string? s))
-  (let [add-punct (fn [curr sym forward]
-                    {:char-seq (nthrest (:char-seq curr) forward)
-                     :token-seq (conj (:token-seq curr) {:token sym})})]
+  (let [inject (fn [recognizer curr]
+                 (let [[s t] (recognizer (:char-seq curr))]
+                   (cond-> (assoc curr :char-seq s)
+                     t (update :token-seq conj t))))
+        puncts (set (seq ",:;()[]{}.+-*=<>&|"))]
     (loop [curr {:char-seq s :token-seq token-queue}]
-      (let [s (:char-seq curr)
-            q (:token-seq curr)]
+      (let [{[c c' :as s] :char-seq} curr]
         (if (empty? s)
           (:token-seq curr)
-          (let [c   (first s)
-                suc (second s)] ;suc may be nil
-            (cond
-              (Character/isWhitespace c) ;skip leading spaces
-              (recur (skip-spaces curr))
-              
-              (Character/isLetter c)     ;find an :id, or keyword token
-              (recur (id-recognizer curr))
+          (cond
+            (Character/isWhitespace c) ;skip leading spaces
+            (recur (inject skip-spaces curr))
 
-              (= c \")                   ;find a :string token
-              (recur (string-recognizer curr))
+            (Character/isLetter c)     ;find an :id, or keyword token
+            (recur (inject id-recognizer curr))
 
-              (Character/isDigit c)      ;find a :digits token
-              (recur (digits-recognizer curr))
+            (= c \")                   ;find a :string token
+            (recur (inject string-recognizer curr))
 
-              (= c \/)                   ;find a :comment, or a :slash token
-              (if (and suc (= suc \*))
-                (recur (comment-recognizer curr true))
-                (recur {:char-seq (rest s)
-                        :token-seq (conj q {:token :slash})}))
+            (Character/isDigit c)      ;find a :digits token
+            (recur (inject digits-recognizer curr))
 
-              :else
-              (case c
-                \, (recur (add-punct curr :comma 1))
-                \: (if (and suc (= suc \=))
-                     (recur (add-punct curr :assign 2))
-                     (recur (add-punct curr :colon 1)))
-                \; (recur (add-punct curr :semi-colon 1))
-                \( (recur (add-punct curr :open-paren 1))
-                \) (recur (add-punct curr :close-paren 1))
-                \[ (recur (add-punct curr :open-bracket 1))
-                \] (recur (add-punct curr :close-bracket 1))
-                \{ (recur (add-punct curr :open-brace 1))
-                \} (recur (add-punct curr :close-brace 1))
-                \. (recur (add-punct curr :period 1))
-                \+ (recur (add-punct curr :plus 1))
-                \- (recur (add-punct curr :minus 1))
-                \* (recur (add-punct curr :star 1))
-                \= (recur (add-punct curr :equal 1))
-                \< (cond (and suc (= suc \>)) (recur (add-punct curr :diamond 2))
-                         (and suc (= suc \=)) (recur (add-punct curr :leq 2))
-                         :else (recur (add-punct curr :lt 1)))
-                \> (if (and suc (= suc \=)) (recur (add-punct curr :geq 2))
-                       (recur (add-punct curr :gt 1)))
-                \& (recur (add-punct curr :and 1))
-                \| (recur (add-punct curr :pipe 1))
-                (:token-seq curr)))))))))
+            (= c \/)                   ;find a :comment, or a :slash token
+            (if (and c' (= c' \*))
+              (recur (inject comment-recognizer curr))
+              (recur (inject punct-recognizer curr)))
+
+            (puncts c)
+            (recur (inject punct-recognizer curr))
+
+            :else
+            (:token-seq curr)))))))
 
 (defn norm-id-to-ty-id
   "find ALL cases where :id should be replaced by :ty-id, and replace them"
