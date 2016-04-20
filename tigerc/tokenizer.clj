@@ -248,41 +248,72 @@
      \& (helper :and 1)
      \| (helper :pipe 1))))
 
-;;TODO add test and enforce termination condition
-(defn tokenize-str [s]
+(defn tokenize-str
+  {:test
+   #(let [string-value "hello"
+          comment-value "..."
+          src {:spaces  " "
+               :id      "x"
+               :string  (str \" string-value \")
+               :digits  "0"
+               :comment (str "/*" comment-value "*/")
+               :plus    "+"
+               :illegal "%"}
+          variations (for [x (keys src)
+                           y (keys src)
+                           :let [neighbor [x y]]
+                           :when (nil? (#{[:spaces :spaces]
+                                          [:id :id]
+                                          [:id :digits]
+                                          [:digits :digits]} neighbor))]
+                       neighbor)]
+      (doall
+       (for [pair variations]
+         (let [test-str (str/join ((apply juxt pair) src))
+               result (tokenize-str test-str)]
+           (if (= (first pair) :illegal)
+             (assert (= result token-queue))
+             (assert (= result
+                        (map (fn [k]
+                               (cond-> {:token k}
+                                 (= k :id)      (assoc :name  (:id src))
+                                 (= k :string)  (assoc :value string-value)
+                                 (= k :digits)  (assoc :value (:digits src))
+                                 (= k :comment) (assoc :value comment-value)))
+                             (remove #{:spaces :illegal} pair)))))))))}
+  [s]
   (assert (string? s))
   (let [inject (fn [recognizer curr]
                  (let [[s t] (recognizer (:char-seq curr))]
                    (cond-> (assoc curr :char-seq s)
                      t (update :token-seq conj t))))
-        puncts (set (seq ",:;()[]{}.+-*=<>&|"))]
-    (loop [curr {:char-seq s :token-seq token-queue}]
-      (let [{[c c' :as s] :char-seq} curr]
-        (if (empty? s)
+        puncts (set (seq ",:;()[]{}.+-*/=<>&|"))]
+    (loop [{:keys [char-seq] :as curr} {:char-seq s :token-seq token-queue}]
+      (let [recognizer (let [[c c'] char-seq]
+                         (cond
+                           ;;skip leading spaces
+                           (and c (Character/isWhitespace c)) skip-spaces
+
+                           ;;consume an :id, or keyword token
+                           (and c (Character/isLetter c)) id-recognizer
+
+                           ;;consume a :string token
+                           (= c \") string-recognizer
+
+                           ;;consume a :digits token
+                           (and c (Character/isDigit c)) digits-recognizer
+
+                           ;;consume a :comment
+                           (= [c c'] comment-opening) comment-recognizer
+
+                           ;;consume the rest of defined symbols
+                           (puncts c) punct-recognizer
+
+                           :else (partial conj [])))
+            next (inject recognizer curr)]
+        (if (= (:char-seq next) char-seq) ;check if fixpoint is reached
           (:token-seq curr)
-          (cond
-            (Character/isWhitespace c) ;skip leading spaces
-            (recur (inject skip-spaces curr))
-
-            (Character/isLetter c)     ;find an :id, or keyword token
-            (recur (inject id-recognizer curr))
-
-            (= c \")                   ;find a :string token
-            (recur (inject string-recognizer curr))
-
-            (Character/isDigit c)      ;find a :digits token
-            (recur (inject digits-recognizer curr))
-
-            (= c \/)                   ;find a :comment, or a :slash token
-            (if (and c' (= c' \*))
-              (recur (inject comment-recognizer curr))
-              (recur (inject punct-recognizer curr)))
-
-            (puncts c)
-            (recur (inject punct-recognizer curr))
-
-            :else
-            (:token-seq curr)))))))
+          (recur next))))))
 
 (defn norm-id-to-ty-id
   "find ALL cases where :id should be replaced by :ty-id, and replace them"
