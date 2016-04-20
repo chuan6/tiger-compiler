@@ -261,12 +261,12 @@
                :illegal "%"}
           variations (for [x (keys src)
                            y (keys src)
-                           :let [neighbor [x y]]
+                           :let [pair [x y]]
                            :when (nil? (#{[:spaces :spaces]
                                           [:id :id]
                                           [:id :digits]
-                                          [:digits :digits]} neighbor))]
-                       neighbor)]
+                                          [:digits :digits]} pair))]
+                       pair)]
       (doall
        (for [pair variations]
          (let [test-str (str/join ((apply juxt pair) src))
@@ -283,12 +283,12 @@
                              (remove #{:spaces :illegal} pair)))))))))}
   [s]
   (assert (string? s))
-  (let [inject (fn [recognizer curr]
-                 (let [[s t] (recognizer (:char-seq curr))]
-                   (cond-> (assoc curr :char-seq s)
+  (let [inject (fn [f curr-env]
+                 (let [[s t] (f (:char-seq curr-env))]
+                   (cond-> (assoc curr-env :char-seq s)
                      t (update :token-seq conj t))))
         puncts (set (seq ",:;()[]{}.+-*/=<>&|"))]
-    (loop [{:keys [char-seq] :as curr} {:char-seq s :token-seq token-queue}]
+    (loop [{:keys [char-seq] :as env} {:char-seq s :token-seq token-queue}]
       (let [recognizer (let [[c c'] char-seq]
                          (cond
                            ;;skip leading spaces
@@ -310,10 +310,10 @@
                            (puncts c) punct-recognizer
 
                            :else (partial conj [])))
-            next (inject recognizer curr)]
-        (if (= (:char-seq next) char-seq) ;check if fixpoint is reached
-          (:token-seq curr)
-          (recur next))))))
+            next-env (inject recognizer env)]
+        (if (= (:char-seq next-env) char-seq) ;check if fixpoint is reached
+          (:token-seq env)
+          (recur next-env))))))
 
 (defn norm-id-to-ty-id
   "find ALL cases where :id should be replaced by :ty-id, and replace them"
