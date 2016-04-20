@@ -333,7 +333,43 @@
 
 (defn norm-id-to-ty-id
   "find ALL cases where :id should be replaced by :ty-id, and replace them"
+  {:test
+   #(let [target
+          {:token :id :name "int"}
+
+          essential-forms
+          [[{:token :colon} :slot]
+           [{:token :type } :slot]
+           [{:token :type } :slot {:token :equal} :slot]
+           [{:token :array} {:token :of} :slot]
+           [:slot {:token :open-brace}]
+           [:slot {:token :open-bracket}
+            {:token :digits :value "2"}
+            {:token :close-bracket} {:token :of}]]
+
+          broken-forms
+          (mapv (fn [[v0 & v]]
+                  (concat [v0 {:token :if}] v))
+                essential-forms)
+
+          slot-to-id
+          (fn [x] (if (not= x :slot) x
+                      target))
+
+          slot-to-ty-id
+          (fn [x] (if (not= x :slot) x
+                      (assoc target :token :ty-id)))]
+      (doall
+       (concat
+        (for [v essential-forms]
+          (assert (= (mapv slot-to-ty-id v)
+                     (norm-id-to-ty-id (mapv slot-to-id v)))))
+        (for [v broken-forms]
+          (assert (= (mapv slot-to-id v)
+                     (norm-id-to-ty-id (mapv slot-to-id v))))))))}
   [token-v]
+  ;;TODO remove no-comment constraint when ready
+  (assert (empty? (filterv #(= (:token %) :comment) token-v)))
   (assert (vector? token-v))
   (comment
     "Rules:"
