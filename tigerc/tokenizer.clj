@@ -274,21 +274,23 @@
            (if (= (first pair) :illegal)
              (assert (= result token-queue))
              (assert (= result
-                        (map (fn [k]
-                               (cond-> {:token k}
-                                 (= k :id)      (assoc :name  (:id src))
-                                 (= k :string)  (assoc :value string-value)
-                                 (= k :digits)  (assoc :value (:digits src))
-                                 (= k :comment) (assoc :value comment-value)))
-                             (remove #{:spaces :illegal} pair)))))))))}
+                        (map
+                         (fn [k]
+                           (cond-> {:token k}
+                             (= k :id)      (assoc :name  (:id src))
+                             (= k :string)  (assoc :value string-value)
+                             (= k :digits)  (assoc :value (:digits src))
+                             (= k :comment) (assoc :value comment-value)))
+                         (remove #{:spaces :illegal} pair)))))))))}
   [s]
   (assert (string? s))
-  (let [inject (fn [f curr-env]
-                 (let [[s t] (f (:char-seq curr-env))]
-                   (cond-> (assoc curr-env :char-seq s)
+  (let [inject (fn [f env]
+                 (let [[s t] (f (:char-seq env))]
+                   (cond-> (assoc env :char-seq s)
                      t (update :token-seq conj t))))
         puncts (set (seq ",:;()[]{}.+-*/=<>&|"))]
-    (loop [{:keys [char-seq] :as env} {:char-seq s :token-seq token-queue}]
+    (loop [{:keys [char-seq] :as curr-env}
+           {:char-seq s :token-seq token-queue}]
       (let [recognizer (let [[c c'] char-seq]
                          (cond
                            ;;skip leading spaces
@@ -310,9 +312,9 @@
                            (puncts c) punct-recognizer
 
                            :else (partial conj [])))
-            next-env (inject recognizer env)]
+            next-env (inject recognizer curr-env)]
         (if (= (:char-seq next-env) char-seq) ;check if fixpoint is reached
-          (:token-seq env)
+          (:token-seq curr-env)
           (recur next-env))))))
 
 (defn norm-id-to-ty-id
