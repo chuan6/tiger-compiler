@@ -9,15 +9,34 @@
     :let :nil :of :then :to :type :var :while})
 
 (def token-punct
-  #{:comma :colon :semi-colon :open-paren :close-paren
-    :open-bracket :close-bracket :open-brace :close-brace
-    :period :plus :minus :star :slash :equal :diamond :lt
-    :leq :gt :geq :and :pipe :assign})
+  {[\: \=] :assign
+   [\< \=] :leq
+   [\[]    :open-bracket
+   [\.]    :period
+   [\*]    :star
+   [\)]    :close-paren
+   [\+]    :plus
+   [\(]    :open-paren
+   [\:]    :colon
+   [\,]    :comma
+   [\;]    :semi-colon
+   [\&]    :and
+   [\>]    :gt
+   [\<]    :lt
+   [\}]    :close-brace
+   [\> \=] :geq
+   [\]]    :close-bracket
+   [\{]    :open-brace
+   [\-]    :minus
+   [\=]    :equal
+   [\/]    :slash
+   [\< \>] :diamond,
+   [\|]    :pipe})
 
 (def token-set
   (clojure.set/union token-complex
                      token-keyword
-                     token-punct))
+                     (set (vals token-punct))))
 
 (def token-queue clojure.lang.PersistentQueue/EMPTY)
 ;;print-method implementation is from Joy of Clojure(2nd edition)
@@ -219,34 +238,29 @@
     (assert (Character/isWhitespace c))
     [(drop-while #(Character/isWhitespace %) source)]))
 
-(defn punct-recognizer [[c c' :as source]]
-  (let [helper (fn [sym forward]
-                 [(nthrest source forward) {:token sym}])]
-   (case c
-     \/ (helper :slash 1)
-     \, (helper :comma 1)
-     \: (if (and c' (= c' \=))
-          (helper :assign 2)
-          (helper :colon 1))
-     \; (helper :semi-colon 1)
-     \( (helper :open-paren 1)
-     \) (helper :close-paren 1)
-     \[ (helper :open-bracket 1)
-     \] (helper :close-bracket 1)
-     \{ (helper :open-brace 1)
-     \} (helper :close-brace 1)
-     \. (helper :period 1)
-     \+ (helper :plus 1)
-     \- (helper :minus 1)
-     \* (helper :star 1)
-     \= (helper :equal 1)
-     \< (cond (and c' (= c' \>)) (helper :diamond 2)
-              (and c' (= c' \=)) (helper :leq 2)
-              :else (helper :lt 1))
-     \> (if (and c' (= c' \=)) (helper :geq 2)
-            (helper :gt 1))
-     \& (helper :and 1)
-     \| (helper :pipe 1))))
+(defn punct-recognizer
+  {:test
+   #(let [puncts (map str/join (keys token-punct))
+          tail " "
+          with-tail (map (fn [x] (str x tail)) puncts)]
+      (doall
+       (concat
+        (for [p puncts]
+          (assert (= [() {:token (token-punct (vec p))}]
+                     (punct-recognizer (seq p)))))
+        (for [w with-tail]
+          (assert (= [(seq tail) {:token (token-punct
+                                          (vec
+                                           (let [l (- (count w)
+                                                      (count tail))]
+                                             (subs w 0 l))))}]
+                     (punct-recognizer (seq w))))))))}
+  [[c c' :as source]]
+  (let [t (token-punct [c])]
+    (assert t)
+    (if-let [t' (token-punct [c c'])]
+      [(nthrest source 2) {:token t'}]
+      [(rest source) {:token t}])))
 
 (defn tokenize-str
   {:test

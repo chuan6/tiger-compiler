@@ -18,7 +18,7 @@ Notable features:
   - query on canonical collection, item-by-state, or state-by-item;
   - construction of action table, and goto table from given canonical
     collection;
-  - generation of simple LR parser that incorperates customizable parse
+  - generation of simple LR parser that incorporates customizable parse
     tree transformation function, for a suitable grammar;
 
 - on **parse tree to AST transformation** (tigerc/ast.clj):
