@@ -331,7 +331,6 @@
           (:token-seq curr-env)
           (recur next-env))))))
 
-
 (defn norm-id-to-ty-id
   "find ALL cases where :id should be replaced by :ty-id, and replace them"
   {:test
@@ -379,65 +378,59 @@
     "  immediately follows :type :ty-id is :ty-id;"
     "- :id that is immediately followed by { is :ty-id"
     "- :id that is immediately followed by [...] :of is :ty-id.")
-  (let [v (transient token-v)
-        n (count v)
-        seq-1 [:colon]
-        seq-2 [:type]
-        seq-3 [:array :of]
-        seq-4 [:type :ty-id :equal]
+  (let [v token-v
+        seq-1 '(:colon)
+        seq-2 '(:type)
+        seq-3 (into () [:array :of])
+        seq-4 (into () [:type :ty-id :equal])
 
         follows?
-        (fn [i sequence]
-          (assert (= (:token (v i)) :id))
-          (let [m (count sequence)]
-            (if (< i m)
-              false
-              (loop [j (- i m) k 0]
-                (if (= j i)
-                  true
-                  (if (= (:token (v j)) (sequence k))
-                    (recur (inc j) (inc k))
-                    false))))))
+        (fn [[prevs s] pattern]
+          (assert (= (:token (first s)) :id))
+          (loop [[x :as xs] prevs
+                 [y :as ys] pattern]
+            (or (empty? ys)
+                (if (not= (:token x) y)
+                  false
+                  (recur (rest xs) (rest ys))))))
 
         followed-by-open-brace?
-        (fn [i]
-          (assert (= (:token (v i)) :id))
-          (let [j (inc i)]
-            (and (< j n) (= (:token (v j)) :open-brace))))
+        (fn [[_ [x y]]]
+          (assert (= (:token x) :id))
+          (= (:token y) :open-brace))
 
-        followed-by-brackets-then-of?
-        (fn [i]
-          (assert (= (:token (v i)) :id))
-          (loop [flag 0 j (inc i)]
-            (assert (>= flag 0))
-            (if (= j n)
-              false
-              (let [t (:token (v j))]
-                (if (= flag 0)
-                  (if (= j (inc i))
-                    (if (= t :open-bracket)
-                      (recur (inc flag) (inc j)) false)
-                    (if (= t :of)
-                      true false))
-                  (recur (case t
-                           :open-bracket (inc flag)
-                           :close-bracket (dec flag)
-                           flag)
-                         (inc j)))))))
+        skip-matching-brackets
+        (fn [s]
+          (assert (= (:token (first s)) :open-bracket))
+          (loop [cnt 1
+                 [x :as xs] (rest s)]
+            (if (or (= cnt 0) (empty? xs))
+              xs
+              (recur ((condp = (:token x)
+                        :open-bracket inc
+                        :close-bracket dec
+                        identity) cnt)
+                     (rest xs)))))
+
+        followed-by-matching-brackets-then-of?
+        (fn [[_ [x & xs]]]
+          (assert (= (:token x) :id))
+          (and (= (:token (first xs)) :open-bracket)
+               (= (:token (first (skip-matching-brackets xs))) :of)))
         ]
-    (loop [i 0 v v]
-      (if (= i n)
-        (persistent! v)
-        (let [vi (v i)]
-          (if (and (= (:token vi) :id)
-                   (or (follows? i seq-1)
-                       (follows? i seq-2)
-                       (follows? i seq-3)
-                       (follows? i seq-4)
-                       (followed-by-open-brace? i)
-                       (followed-by-brackets-then-of? i)))
-            (recur (inc i) (assoc! v i {:token :ty-id :name (:name vi)}))
-            (recur (inc i) v)))))))
+    (loop [[acc nexts :as curr] [() (seq v)]]
+      (if (empty? nexts)
+        (into [] (reverse acc))
+        (recur [(if (and (= (:token (first nexts)) :id)
+                         (or (follows? curr seq-1)
+                             (follows? curr seq-2)
+                             (follows? curr seq-3)
+                             (follows? curr seq-4)
+                             (followed-by-open-brace? curr)
+                             (followed-by-matching-brackets-then-of? curr)))
+                  (conj acc (assoc (first nexts) :token :ty-id))
+                  (conj acc (first nexts)))
+                (rest nexts)])))))
 
 (defn tokenize-file [path-to-file]
   (let [str (slurp path-to-file)
