@@ -331,6 +331,7 @@
           (:token-seq curr-env)
           (recur next-env))))))
 
+
 (defn norm-id-to-ty-id
   "find ALL cases where :id should be replaced by :ty-id, and replace them"
   {:test
@@ -349,24 +350,22 @@
 
           broken-forms
           (mapv (fn [[v0 & v]]
-                  (concat [v0 {:token :if}] v))
+                  (into [v0 {:token :if}] v))
                 essential-forms)
 
           slot-to-id
-          (fn [x] (if (not= x :slot) x
-                      target))
+          (fn [v] (replace {:slot target} v))
 
           slot-to-ty-id
-          (fn [x] (if (not= x :slot) x
-                      (assoc target :token :ty-id)))]
+          (fn [v] (replace {:slot (assoc target :token :ty-id)} v))]
       (doall
        (concat
         (for [v essential-forms]
-          (assert (= (mapv slot-to-ty-id v)
-                     (norm-id-to-ty-id (mapv slot-to-id v)))))
+          (assert (= (slot-to-ty-id v)
+                     (norm-id-to-ty-id (slot-to-id v)))))
         (for [v broken-forms]
-          (assert (= (mapv slot-to-id v)
-                     (norm-id-to-ty-id (mapv slot-to-id v))))))))}
+          (assert (= (slot-to-id v)
+                     (norm-id-to-ty-id (slot-to-id v))))))))}
   [token-v]
   ;;TODO remove no-comment constraint when ready
   (assert (empty? (filterv #(= (:token %) :comment) token-v)))
@@ -389,7 +388,6 @@
 
         follows?
         (fn [i sequence]
-          ;;(println i sequence)
           (assert (= (:token (v i)) :id))
           (let [m (count sequence)]
             (if (< i m)
@@ -409,7 +407,6 @@
 
         followed-by-brackets-then-of?
         (fn [i]
-          ;;(println i)
           (assert (= (:token (v i)) :id))
           (loop [flag 0 j (inc i)]
             (assert (>= flag 0))
