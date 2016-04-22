@@ -353,10 +353,10 @@
                 essential-forms)
 
           slot-to-id
-          (fn [v] (replace {:slot target} v))
+          (partial replace {:slot target})
 
           slot-to-ty-id
-          (fn [v] (replace {:slot (assoc target :token :ty-id)} v))]
+          (partial replace {:slot (assoc target :token :ty-id)})]
       (doall
        (concat
         (for [v essential-forms]
@@ -365,10 +365,7 @@
         (for [v broken-forms]
           (assert (= (slot-to-id v)
                      (norm-id-to-ty-id (slot-to-id v))))))))}
-  [token-v]
-  ;;TODO remove no-comment constraint when ready
-  (assert (empty? (filterv #(= (:token %) :comment) token-v)))
-  (assert (vector? token-v))
+  [tokens]
   (comment
     "Rules:"
     "- :id that immediately follows :colon is :ty-id;"
@@ -378,25 +375,25 @@
     "  immediately follows :type :ty-id is :ty-id;"
     "- :id that is immediately followed by { is :ty-id"
     "- :id that is immediately followed by [...] :of is :ty-id.")
-  (let [v token-v
-        seq-1 '(:colon)
-        seq-2 '(:type)
-        seq-3 (into () [:array :of])
-        seq-4 (into () [:type :ty-id :equal])
+  (let [tokens-without-cmts (remove #(= (:token %) :comment) tokens)
+
+        pattern-1 [:colon]
+        pattern-2 [:type]
+        pattern-3 [:array :of]
+        pattern-4 [:type :ty-id :equal]
 
         follows?
-        (fn [[prevs s] pattern]
-          (assert (= (:token (first s)) :id))
-          (loop [[x :as xs] prevs
-                 [y :as ys] pattern]
-            (or (empty? ys)
+        (fn [[prevs _] pattern]
+          (loop [xs prevs ys pattern]
+            (if (empty? ys)
+              true
+              (let [x (peek xs) y (peek ys)]
                 (if (not= (:token x) y)
                   false
-                  (recur (rest xs) (rest ys))))))
+                  (recur (pop xs) (pop ys)))))))
 
         followed-by-open-brace?
         (fn [[_ [x y]]]
-          (assert (= (:token x) :id))
           (= (:token y) :open-brace))
 
         skip-matching-brackets
@@ -414,25 +411,26 @@
 
         followed-by-matching-brackets-then-of?
         (fn [[_ [x & xs]]]
-          (assert (= (:token x) :id))
           (and (= (:token (first xs)) :open-bracket)
                (= (:token (first (skip-matching-brackets xs))) :of)))
         ]
-    (loop [[acc nexts :as curr] [() (seq v)]]
-      (if (empty? nexts)
-        (into [] (reverse acc))
-        (recur [(if (and (= (:token (first nexts)) :id)
-                         (or (follows? curr seq-1)
-                             (follows? curr seq-2)
-                             (follows? curr seq-3)
-                             (follows? curr seq-4)
-                             (followed-by-open-brace? curr)
-                             (followed-by-matching-brackets-then-of? curr)))
-                  (conj acc (assoc (first nexts) :token :ty-id))
-                  (conj acc (first nexts)))
-                (rest nexts)])))))
+    (loop [[ret-stack [t & ts] :as curr] [[] tokens-without-cmts]]
+      (if (nil? t)
+        ret-stack
+        (recur
+         [(conj ret-stack
+                (cond-> t
+                  (and (= (:token t) :id)
+                       (or (follows? curr pattern-1)
+                           (follows? curr pattern-2)
+                           (follows? curr pattern-3)
+                           (follows? curr pattern-4)
+                           (followed-by-open-brace? curr)
+                           (followed-by-matching-brackets-then-of? curr)))
+                  (assoc :token :ty-id)))
+          ts])))))
 
 (defn tokenize-file [path-to-file]
   (let [str (slurp path-to-file)
-        tv (vec (tokenize-str str))]
-    (norm-id-to-ty-id tv)))
+        ts (tokenize-str str)]
+    (norm-id-to-ty-id ts)))
