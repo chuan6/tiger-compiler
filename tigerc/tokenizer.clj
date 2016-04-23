@@ -63,6 +63,13 @@
   [s]
   (token-keyword (keyword s)))
 
+(defn- without-prefix [origin prefix]
+  (loop [s origin t prefix]
+    (cond
+      (empty? t) s
+      (not= (first s) (first t)) origin
+      :else (recur (rest s) (rest t)))))
+
 (defn id-recognizer
   {:test
    #(let [ids    ["x" "x1" "x_1" "x_1_"]
