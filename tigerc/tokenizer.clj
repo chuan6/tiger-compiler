@@ -282,19 +282,16 @@
                          (remove #{:spaces :illegal} pair)))))))))}
   [s]
   (assert (string? s))
-  (let [inject (fn [f env]
-                 (let [[s t] (f (:char-seq env))]
-                   (cond-> (update env :char-seq without-prefix s)
-                     t (update :token-seq conj t))))
-        skip-spaces (fn [env]
-                      (update env :char-seq
-                              (partial drop-while
-                                       #(Character/isWhitespace %))))
+  (let [skip-spaces (partial drop-while #(Character/isWhitespace %))
+        inject (fn [env [processed recognized]]
+                 (cond-> (update env :char-seq
+                                 (comp skip-spaces without-prefix)
+                                 processed)
+                   recognized (update :token-seq conj recognized)))
         puncts (set (seq ",:;()[]{}.+-*/=<>&|"))]
-    (loop [curr-env {:char-seq s :token-seq empty-queue}]
-      (let [{:keys [char-seq]
-             :as no-leading-space-env} (skip-spaces curr-env)
-            recognizer (let [[c c'] char-seq]
+    (loop [{:keys [char-seq] :as curr-env}
+           {:char-seq (skip-spaces s) :token-seq empty-queue}]
+      (let [recognizer (let [[c c'] char-seq]
                          (cond
                            ;;consume an :id, or keyword token
                            (and c (Character/isLetter c)) id-recognizer
@@ -312,10 +309,10 @@
                            (puncts c) punct-recognizer
 
                            :else (partial conj [])))
-            next-env (inject recognizer no-leading-space-env)]
-        (if (= (:char-seq next-env) char-seq) ;check if fixpoint is reached
+            [processed :as ret] (recognizer char-seq)]
+        (if (empty? processed) ;check if fixpoint is reached
           (:token-seq curr-env)
-          (recur next-env))))))
+          (recur (inject curr-env ret)))))))
 
 (defn norm-id-to-ty-id
   "find ALL cases where :id should be replaced by :ty-id, and replace them"
