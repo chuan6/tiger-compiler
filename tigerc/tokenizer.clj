@@ -1,5 +1,6 @@
 (ns tokenizer
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [tigerc.test :as tt]))
 
 (def token-complex
   #{:id :comment :digits :string})
@@ -74,17 +75,14 @@
   {:test
    #(let [ids    ["x" "x1" "x_1" "x_1_"]
           kwords (map name token-keyword)]
-      (assert (empty? (clojure.set/intersection (set ids)
-                                                (set kwords)))
-              "ineffective test!")
       (doall
        (concat
         (for [id ids]
-          (assert (= [(vec id) {:token :id :name id}]
-                     (id-recognizer (seq id)))))
+          (tt/assert= [(vec id) {:token :id :name id}]
+                      (id-recognizer (seq id))))
         (for [kw kwords]
-          (assert (= [(vec kw) {:token (keyword kw)}]
-                     (id-recognizer (seq kw))))))))}
+          (tt/assert= [(vec kw) {:token (keyword kw)}]
+                      (id-recognizer (seq kw)))))))}
   [source]
   (let [c (first source)]
     (assert (Character/isLetter c))
@@ -107,12 +105,12 @@
       (doall
        (concat
         (for [ds all-digits]
-          (assert (= [(vec ds) {:token :digits :value ds}]
-                     (digits-recognizer (seq ds)))))
+          (tt/assert= [(vec ds) {:token :digits :value ds}]
+                      (digits-recognizer (seq ds))))
         (for [ts with-non-digit-tail]
           (let [[s t] (digits-recognizer (seq ts))]
-            (assert (= (without-prefix ts s) (vec tail)))
-            (assert (= (str (:value t) tail) ts)))))))}
+            (tt/assert= (without-prefix ts s) (vec tail))
+            (tt/assert= (str (:value t) tail) ts))))))}
   [source]
   (let [c (first source)]
     (assert (Character/isDigit c))
@@ -134,15 +132,15 @@
       (doall
        (concat
         (for [s strings]
-          (assert (= [(vec s)
-                      {:token :string :value (subs s 1 (dec (count s)))}]
-                     (string-recognizer (seq s)))))
+          (tt/assert= [(vec s)
+                       {:token :string :value (subs s 1 (dec (count s)))}]
+                      (string-recognizer (seq s))))
         (for [m missing-closing-quote]
-          (assert (= [[]] (string-recognizer (seq m)))))
+          (tt/assert= [[]] (string-recognizer (seq m))))
         (for [ts with-tail]
           (let [[s t] (string-recognizer (seq ts))]
-            (assert (= (without-prefix ts s) (vec tail)))
-            (assert (= (str \" (:value t) \" tail) ts)))))))}
+            (tt/assert= (without-prefix ts s) (vec tail))
+            (tt/assert= (str \" (:value t) \" tail) ts))))))}
   [source]
   (let [c (first source)]
     (assert (= c \"))
@@ -187,20 +185,20 @@
       (doall
        (concat
         (for [cmt cmts]
-          (assert (= [(vec cmt) {:token :comment :value cmt}]
-                     (comment-recognizer (seq cmt)))))
+          (tt/assert= [(vec cmt) {:token :comment :value cmt}]
+                      (comment-recognizer (seq cmt))))
         (for [m missing-closing]
-          (assert (= [[]] (comment-recognizer (seq m)))))
+          (tt/assert= [[]] (comment-recognizer (seq m))))
         (for [ts with-tail]
           (let [[s t] (comment-recognizer (seq ts))]
-            (assert (= (without-prefix ts s) (vec tail)))
-            (assert (= (str (:value t) tail) ts)))))))}
+            (tt/assert= (without-prefix ts s) (vec tail))
+            (tt/assert= (str (:value t) tail) ts))))))}
   [source]
   (let [[s0 s1 :as ss] source]
     (assert (= [s0 s1] comment-opening))
     (let [pairs (as-> ss $
-                     (concat $ [\space]) ;left-shifted
-                     (partition 2 1 $))]
+                  (concat $ [\space]) ;left-shifted
+                  (partition 2 1 $))]
       (letfn [(cmt-reader [[p & pmore]]
                 (assert (= p comment-opening))
                 (loop [[p & pmore :as ps] (rest pmore)
@@ -234,12 +232,12 @@
       (doall
        (concat
         (for [p puncts]
-          (assert (= [(vec p) {:token (token-punct (vec p))}]
-                     (punct-recognizer (seq p)))))
+          (tt/assert= [(vec p) {:token (token-punct (vec p))}]
+                      (punct-recognizer (seq p))))
         (for [w with-tail]
           (let [[s t] (punct-recognizer (seq w))]
-            (assert (= (without-prefix w s) (vec tail)))
-            (assert (= (:token t) (token-punct s))))))))}
+            (tt/assert= (without-prefix w s) (vec tail))
+            (tt/assert= (:token t) (token-punct s)))))))}
   [[c c' :as source]]
   (let [t (token-punct [c])]
     (assert t)
@@ -270,16 +268,16 @@
          (let [test-str (str/join ((apply juxt pair) src))
                result (tokenize-str test-str)]
            (if (= (first pair) :illegal)
-             (assert (= result empty-queue))
-             (assert (= result
-                        (map
-                         (fn [k]
-                           (cond-> {:token k}
-                             (= k :id)      (assoc :name  (:id src))
-                             (= k :string)  (assoc :value string-value)
-                             (= k :digits)  (assoc :value (:digits src))
-                             (= k :comment) (assoc :value (:comment src))))
-                         (remove #{:spaces :illegal} pair)))))))))}
+             (tt/assert= result empty-queue)
+             (tt/assert= result
+                         (map
+                          (fn [k]
+                            (cond-> {:token k}
+                              (= k :id)      (assoc :name  (:id src))
+                              (= k :string)  (assoc :value string-value)
+                              (= k :digits)  (assoc :value (:digits src))
+                              (= k :comment) (assoc :value (:comment src))))
+                          (remove #{:spaces :illegal} pair))))))))}
   [s]
   (assert (string? s))
   (let [skip-spaces (partial drop-while #(Character/isWhitespace %))
@@ -343,11 +341,11 @@
       (doall
        (concat
         (for [v essential-forms]
-          (assert (= (slot-to-ty-id v)
-                     (norm-id-to-ty-id (slot-to-id v)))))
+          (tt/assert= (slot-to-ty-id v)
+                      (norm-id-to-ty-id (slot-to-id v))))
         (for [v broken-forms]
-          (assert (= (slot-to-id v)
-                     (norm-id-to-ty-id (slot-to-id v))))))))}
+          (tt/assert= (slot-to-id v)
+                      (norm-id-to-ty-id (slot-to-id v)))))))}
   [tokens]
   (comment
     "Rules:"
