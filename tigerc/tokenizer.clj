@@ -1,5 +1,6 @@
 (ns tokenizer
   (:require [clojure.string :as str]
+            [clojure.test :as t]
             [tigerc.test :as tt]))
 
 (def token-complex
@@ -71,12 +72,14 @@
    #(let [ids    ["x" "x1" "x_1" "x_1_"]
           kwords (map name token-keyword)]
       (tt/comprehend-tests
-       (for [id ids]
-         (tt/assert= [(vec id) {:token :id :name id}]
-                     (id-recognizer (seq id))))
-       (for [kw kwords]
-         (tt/assert= [(vec kw) {:token (keyword kw)}]
-                     (id-recognizer (seq kw))))))}
+       (for [id ids
+             :let [[s t] (id-recognizer (seq id))]]
+         [(t/is (= (vec id) s))
+          (t/is (= {:token :id :name id} t))])
+       (for [kw kwords
+             :let [[s t] (id-recognizer (seq kw))]]
+         [(t/is (= (vec kw) s))
+          (t/is (= {:token (keyword kw)} t))])))}
   [source]
   (let [c (first source)]
     (assert (Character/isLetter c))
@@ -93,17 +96,18 @@
 
 (defn digits-recognizer
   {:test
-   #(let [all-digits ["0" "1" "123" "123"]
+   #(let [all-digits ["0" "1" "123"]
           tail "f"
           with-non-digit-tail (map (fn [ds] (str ds tail)) all-digits)]
       (tt/comprehend-tests
-       (for [ds all-digits]
-         (tt/assert= [(vec ds) {:token :digits :value ds}]
-                     (digits-recognizer (seq ds))))
-       (for [ts with-non-digit-tail]
-         (let [[s t] (digits-recognizer (seq ts))]
-           (tt/assert= (vec tail) (without-prefix ts s))
-           (tt/assert= ts (str (:value t) tail))))))}
+       (for [ds all-digits
+             :let [[s t] (digits-recognizer (seq ds))]]
+         [(t/is (= (vec ds) s))
+          (t/is (= {:token :digits :value ds} t))])
+       (for [ts with-non-digit-tail
+             :let [[s t] (digits-recognizer (seq ts))]]
+         [(t/is (= (vec tail) (without-prefix ts s)))
+          (t/is (= ts (str (:value t) tail)))])))}
   [source]
   (let [c (first source)]
     (assert (Character/isDigit c))
@@ -123,16 +127,16 @@
           tail " "
           with-tail (map (fn [s] (str s tail)) strings)]
       (tt/comprehend-tests
-       (for [s strings]
-         (tt/assert= [(vec s)
-                      {:token :string :value (subs s 1 (dec (count s)))}]
-                     (string-recognizer (seq s))))
+       (for [cs strings
+             :let [[s t] (string-recognizer (seq cs))]]
+         [(t/is (= (vec cs) s))
+          (t/is (= {:token :string :value (subs cs 1 (dec (count cs)))} t))])
        (for [m missing-closing-quote]
-         (tt/assert= [[]] (string-recognizer (seq m))))
-       (for [ts with-tail]
-         (let [[s t] (string-recognizer (seq ts))]
-           (tt/assert= (vec tail) (without-prefix ts s))
-           (tt/assert= ts (str \" (:value t) \" tail))))))}
+         (t/is (= [[]] (string-recognizer (seq m)))))
+       (for [ts with-tail
+             :let [[s t] (string-recognizer (seq ts))]]
+         [(t/is (= (vec tail) (without-prefix ts s)))
+          (t/is (= ts (str \" (:value t) \" tail)))])))}
   [source]
   (let [c (first source)]
     (assert (= c \"))
@@ -175,15 +179,16 @@
           tail "*/"
           with-tail (map (fn [s] (str s tail)) cmts)]
       (tt/comprehend-tests
-       (for [cmt cmts]
-         (tt/assert= [(vec cmt) {:token :comment :value cmt}]
-                     (comment-recognizer (seq cmt))))
+       (for [cmt cmts
+             :let [[s t] (comment-recognizer (seq cmt))]]
+         [(t/is (= (vec cmt) s))
+          (t/is (= {:token :comment :value cmt} t))])
        (for [m missing-closing]
-         (tt/assert= [[]] (comment-recognizer (seq m))))
-       (for [ts with-tail]
-         (let [[s t] (comment-recognizer (seq ts))]
-           (tt/assert= (vec tail) (without-prefix ts s))
-           (tt/assert= ts (str (:value t) tail))))))}
+         (t/is (= [[]] (comment-recognizer (seq m)))))
+       (for [ts with-tail
+             :let [[s t] (comment-recognizer (seq ts))]]
+         [(t/is (= (vec tail) (without-prefix ts s)))
+          (t/is (= ts (str (:value t) tail)))])))}
   [source]
   (let [[s0 s1 :as ss] source]
     (assert (= [s0 s1] comment-opening))
@@ -221,13 +226,14 @@
           tail " "
           with-tail (map (fn [x] (str x tail)) puncts)]
       (tt/comprehend-tests
-       (for [p puncts]
-         (tt/assert= [(vec p) {:token (token-punct (vec p))}]
-                     (punct-recognizer (seq p))))
-       (for [w with-tail]
-         (let [[s t] (punct-recognizer (seq w))]
-           (tt/assert= (vec tail) (without-prefix w s))
-           (tt/assert= (token-punct s) (:token t))))))}
+       (for [p puncts
+             :let [[s t] (punct-recognizer (seq p))]]
+         [(t/is (= (vec p) s))
+          (t/is (= {:token (token-punct (vec p))} t))])
+       (for [w with-tail
+             :let [[s t] (punct-recognizer (seq w))]]
+         [(t/is (= (vec tail) (without-prefix w s)))
+          (t/is (= (token-punct s) (:token t)))])))}
   [[c c' :as source]]
   (let [t (token-punct [c])]
     (assert t)
@@ -252,22 +258,18 @@
                                           [:id :id]
                                           [:id :digits]
                                           [:digits :digits]} pair))]
-                       pair)]
+                       pair)
+          mock (fn [k] (cond-> {:token k}
+                         (= k :id)      (assoc :name  (:id src))
+                         (= k :string)  (assoc :value string-value)
+                         (= k :digits)  (assoc :value (:digits src))
+                         (= k :comment) (assoc :value (:comment src))))]
       (tt/comprehend-tests
-       (for [pair variations]
-         (let [test-str (str/join ((apply juxt pair) src))
-               result (tokenize-str test-str)]
-           (if (= (first pair) :illegal)
-             (tt/assert= empty-queue result)
-             (tt/assert= (map
-                          (fn [k]
-                            (cond-> {:token k}
-                              (= k :id)      (assoc :name  (:id src))
-                              (= k :string)  (assoc :value string-value)
-                              (= k :digits)  (assoc :value (:digits src))
-                              (= k :comment) (assoc :value (:comment src))))
-                          (remove #{:spaces :illegal} pair))
-                         result))))))}
+       (for [pair variations
+             :let [r (tokenize-str (str/join ((apply juxt pair) src)))]]
+         (if (= (first pair) :illegal)
+           (t/is (= empty-queue r))
+           (t/is (= (map mock (remove #{:spaces :illegal} pair)) r))))))}
   [s]
   (assert (string? s))
   (let [skip-spaces (partial drop-while #(Character/isWhitespace %))
@@ -330,11 +332,9 @@
           (partial replace {:slot (assoc target :token :ty-id)})]
       (tt/comprehend-tests
        (for [v essential-forms]
-         (tt/assert= (slot-to-ty-id v)
-                     (norm-id-to-ty-id (slot-to-id v))))
+         (t/is (= (slot-to-ty-id v) (norm-id-to-ty-id (slot-to-id v)))))
        (for [v broken-forms]
-         (tt/assert= (slot-to-id v)
-                     (norm-id-to-ty-id (slot-to-id v))))))}
+         (t/is (= (slot-to-id v) (norm-id-to-ty-id (slot-to-id v)))))))}
   [tokens]
   (comment
     "Rules:"
