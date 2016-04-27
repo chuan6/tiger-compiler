@@ -1,5 +1,7 @@
 (ns cfg
-  (:require [clojure.set :as set]))
+  (:require [clojure.set :as set]
+            [clojure.test :as t]
+            [tigerc.test :as tt]))
 
 (def empty-string :ε)
 (def end-marker :$)
@@ -27,7 +29,29 @@
    :productions
    {:e [[:if :e :then :e] [:if :e :then :e :else :e]]}})
 
-(defn grammar-inv [g]
+(defn grammar-inv
+  {:test
+   #(let [empty-g {:terminals #{} :productions {}}
+          gs [{:terminals #{:digit}
+               :start :e
+               :productions {:e [[:e :digit] [:digit]]}}
+              sample-cal test-grammar if-grammar]
+          terms #{:extra-terminal}
+          gs-more-terms (map (fn [g]
+                               (update g :terminals clojure.set/union terms))
+                             gs)
+          gs-less-terms (map (fn [g]
+                               (update g :terminals (fn [ts] (disj ts (first ts)))))
+                             gs)]
+      (tt/comprehend-tests
+       (t/is (= true (grammar-inv empty-g)))
+       (for [g gs]
+         (t/is (= true (grammar-inv g))))
+       (for [g gs-more-terms]
+         (t/is (= false (grammar-inv g))))
+       (for [g gs-less-terms]
+         (t/is (= false (grammar-inv g))))))}
+  [g]
   "terminals found in :productions of the grammar equals its :terminals, or not"
   (let [target (:terminals g)
         prod-dict (:productions g)
