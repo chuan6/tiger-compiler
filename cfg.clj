@@ -68,40 +68,60 @@
   [g]
   (let [target (:terminals g)
         prod-dict (:productions g)
-        tset  (loop [ps (seq prod-dict)
-                     ts #{}]
-                (if (empty? ps)
-                  ts
-                  (recur
-                   (rest ps)
-                   (let [p (first ps)]
-                     (loop [p-alts (seq (p 1))
-                            ts ts]
-                       (if (empty? p-alts)
-                         ts
-                         (recur
-                          (rest p-alts)
-                          (let [p-alt (first p-alts)]
-                            (loop [p-seq (seq p-alt)
-                                   ts ts]
-                              (if (empty? p-seq)
-                                ts
-                                (recur
-                                 (rest p-seq)
-                                 (let [k (first p-seq)]
-                                   (if (get prod-dict k)
-                                     ts
-                                     (conj ts k))))))))))))))]
+        tset (clojure.set/difference (set (flatten (vals prod-dict)))
+                                     (set (keys prod-dict)))]
     {:only-in-terminals (clojure.set/difference target tset)
      :only-in-productions (clojure.set/difference tset target)}))
 
-(defn- grammar-inv [g]
-  (let [ret (diff-terminals-productions g)]
-    (if (every? empty? (vals ret))
-      (do (println "well defined.")
-          true)
-      (do (println "not well defined;" ret ".")
-          false))))
+(defn non-terminals-not-derivable-from-start
+  {:test
+   #(let [gs [{:terminals #{:digit}
+               :start :e
+               :productions {:e [[:e :digit] [:digit]]}}
+              sample-cal test-grammar if-grammar]
+          extra-term empty-string
+          extra-nterm-prod {:extra-nonterminal [[extra-term]]}
+          gs' (map (fn [g] (-> g
+                               (update :productions into extra-nterm-prod)
+                               (update :terminals conj extra-term)))
+                   gs)
+          non-derivable-nts (set (keys extra-nterm-prod))]
+      (tt/comprehend-tests
+       (for [g gs
+             :let [nts (non-terminals-not-derivable-from-start g)]]
+         (t/is (empty? nts)))
+       (for [g gs'
+             :let [nts (non-terminals-not-derivable-from-start g)]]
+         (t/is (= non-derivable-nts nts)))))}
+  [g]
+  (assert (t/is (every? empty? (vals (diff-terminals-productions g))))
+          (str "In the given grammar, there is 1 (or more) term(s) that"
+               " neither is defined in terminals, nor has corresponding"
+               " productions. The term(s) thus cannot be categorized as"
+               " terminal(s) or non-terminal(s), and will render"
+               " this function ineffective."))
+  (let [nts (set (keys (:productions g)))]
+   (loop [nts-processed #{}
+          nts-to-be-reached #{(:start g)}]
+     (if (empty? nts-to-be-reached)
+       (clojure.set/difference nts nts-processed)
+       (let [nts-processed' (into nts-processed nts-to-be-reached)]
+        (recur nts-processed'
+               (set (->> nts-to-be-reached
+                         (select-keys (:productions g))
+                         vals
+                         flatten
+                         (remove (:terminals g))
+                         (remove nts-processed')))))))))
+
+(defn- grammar-inv
+  {:test
+   #(tt/comprehend-tests
+     (for [g [sample-cal test-grammar if-grammar]]
+       (t/is (= true (grammar-inv g)))))}
+  [g]
+  (and (t/is (every? empty? (vals (diff-terminals-productions g))))
+       (t/is (empty? (non-terminals-not-derivable-from-start g)))))
 
 (defn terminal? [grammar x]
   (if (or (= x empty-string) (= x end-marker))
