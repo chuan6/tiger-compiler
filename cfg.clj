@@ -29,7 +29,7 @@
    :productions
    {:e [[:if :e :then :e] [:if :e :then :e :else :e]]}})
 
-(defn grammar-inv
+(defn diff-terminals-productions
   {:test
    #(let [empty-g {:terminals #{} :productions {}}
           gs [{:terminals #{:digit}
@@ -38,21 +38,34 @@
               sample-cal test-grammar if-grammar]
           terms #{:extra-terminal}
           gs-more-terms (map (fn [g]
-                               (update g :terminals clojure.set/union terms))
+                               (update g :terminals
+                                       clojure.set/union terms))
                              gs)
-          gs-less-terms (map (fn [g]
-                               (update g :terminals (fn [ts] (disj ts (first ts)))))
-                             gs)]
+          gs-missed-term (map (fn [g]
+                                (let [t (first (:terminals g))]
+                                  [(update g :terminals disj t) t]))
+                              gs)]
       (tt/comprehend-tests
-       (t/is (= true (grammar-inv empty-g)))
-       (for [g gs]
-         (t/is (= true (grammar-inv g))))
-       (for [g gs-more-terms]
-         (t/is (= false (grammar-inv g))))
-       (for [g gs-less-terms]
-         (t/is (= false (grammar-inv g))))))}
+       (let [{:keys [only-in-terminals only-in-productions]}
+             (diff-terminals-productions empty-g)]
+         [(t/is (empty? only-in-terminals))
+          (t/is (empty? only-in-productions))])
+       (for [g gs
+             :let [{:keys [only-in-terminals only-in-productions]}
+                   (diff-terminals-productions g)]]
+         [(t/is (empty? only-in-terminals))
+          (t/is (empty? only-in-productions))])
+       (for [g gs-more-terms
+             :let [{:keys [only-in-terminals only-in-productions]}
+                   (diff-terminals-productions g)]]
+         [(t/is (= terms only-in-terminals))
+          (t/is (empty? only-in-productions))])
+       (for [[g t] gs-missed-term
+             :let [{:keys  [only-in-terminals only-in-productions]}
+                   (diff-terminals-productions g)]]
+         [(t/is (empty? only-in-terminals))
+          (t/is (= #{t} only-in-productions))])))}
   [g]
-  "terminals found in :productions of the grammar equals its :terminals, or not"
   (let [target (:terminals g)
         prod-dict (:productions g)
         tset  (loop [ps (seq prod-dict)
@@ -79,10 +92,38 @@
                                    (if (get prod-dict k)
                                      ts
                                      (conj ts k))))))))))))))]
-    (if (= target tset)
-      (do (println "well defined.") true)
-      (do (println "<" (clojure.set/difference target tset))
-          (println ">" (clojure.set/difference tset target))
+    {:only-in-terminals (clojure.set/difference target tset)
+     :only-in-productions (clojure.set/difference tset target)}))
+
+(defn grammar-inv
+  {:test
+   #(let [empty-g {:terminals #{} :productions {}}
+          gs [{:terminals #{:digit}
+               :start :e
+               :productions {:e [[:e :digit] [:digit]]}}
+              sample-cal test-grammar if-grammar]
+          terms #{:extra-terminal}
+          gs-more-terms (map (fn [g]
+                               (update g :terminals clojure.set/union terms))
+                             gs)
+          gs-less-terms (map (fn [g]
+                               (update g :terminals (fn [ts] (disj ts (first ts)))))
+                             gs)]
+      (tt/comprehend-tests
+       (t/is (= true (grammar-inv empty-g)))
+       (for [g gs]
+         (t/is (= true (grammar-inv g))))
+       (for [g gs-more-terms]
+         (t/is (= false (grammar-inv g))))
+       (for [g gs-less-terms]
+         (t/is (= false (grammar-inv g))))))}
+  [g]
+  "terminals found in :productions of the grammar equals its :terminals, or not"
+  (let [ret (diff-terminals-productions g)]
+    (if (every? empty? (vals ret))
+      (do (println "well defined.")
+          true)
+      (do (println "not well defined;" ret ".")
           false))))
 
 (defn terminal? [grammar x]
