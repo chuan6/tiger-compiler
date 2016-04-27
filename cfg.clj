@@ -95,30 +95,7 @@
     {:only-in-terminals (clojure.set/difference target tset)
      :only-in-productions (clojure.set/difference tset target)}))
 
-(defn grammar-inv
-  {:test
-   #(let [empty-g {:terminals #{} :productions {}}
-          gs [{:terminals #{:digit}
-               :start :e
-               :productions {:e [[:e :digit] [:digit]]}}
-              sample-cal test-grammar if-grammar]
-          terms #{:extra-terminal}
-          gs-more-terms (map (fn [g]
-                               (update g :terminals clojure.set/union terms))
-                             gs)
-          gs-less-terms (map (fn [g]
-                               (update g :terminals (fn [ts] (disj ts (first ts)))))
-                             gs)]
-      (tt/comprehend-tests
-       (t/is (= true (grammar-inv empty-g)))
-       (for [g gs]
-         (t/is (= true (grammar-inv g))))
-       (for [g gs-more-terms]
-         (t/is (= false (grammar-inv g))))
-       (for [g gs-less-terms]
-         (t/is (= false (grammar-inv g))))))}
-  [g]
-  "terminals found in :productions of the grammar equals its :terminals, or not"
+(defn- grammar-inv [g]
   (let [ret (diff-terminals-productions g)]
     (if (every? empty? (vals ret))
       (do (println "well defined.")
