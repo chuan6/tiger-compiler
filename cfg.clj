@@ -52,7 +52,7 @@
                                 (recur
                                  (rest p-seq)
                                  (let [k (first p-seq)]
-                                   (if (k prod-dict)
+                                   (if (get prod-dict k)
                                      ts
                                      (conj ts k))))))))))))))]
     (if (= target tset)
