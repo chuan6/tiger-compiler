@@ -141,50 +141,45 @@
           start-symbol-input [(:start g)]
           empty-string-input [:if-tail :lvalue]]
       (tt/comprehend-tests
-       (for [xs (concat single-term-inputs two-terms-inputs)
-             :let [expected #{(first xs)}]]
-         (t/is (= expected (first-set g xs))))
+       (for [xs single-term-inputs]
+         (t/is (= #{(first xs)} (first-set g xs))))
+       (for [xs two-terms-inputs
+             :let [x (first xs)]
+             :when (not= x empty-string)]
+         (t/is (= #{x} (first-set g xs))))
+       (for [xs two-terms-inputs
+             :let [x (first xs)]
+             :when (= x empty-string)]
+         (t/is (= (set xs) (first-set g xs))))
        (t/is (= #{:ty-id :let :if :digits :minus :string :open-paren
                   :break :for :id :nil :while}
                 (first-set g start-symbol-input)))
        (t/is (= #{:else empty-string :id}
                 (first-set g empty-string-input)))))}
   ([g xs] (first-set g xs {}))
-  ([g xs mem];use mem to avoid infinite loop, and improve efficiency for certain cases
-   ;;(println xs)
-   (assert (vector? xs))
-   (let [n (count xs)]
-     (loop [r #{}
-            i 0
-            mem mem];the loop is for the cases where first set of the current symbol contains empty string
-       (if (= i n)
-         r
-         (let [x (xs i)]
-           (if (terminal? g x)
-             (conj r x)
-             (let [xset (x mem)]
-               (if xset
-                 xset
-                 (let [xset
-                       (let [prod-dict (:productions g)]
-                         (assert (contains? prod-dict x))
-                         (let [altv (x prod-dict)
-                               m (count altv)]
-                           (loop [r #{}
-                                  i 0
-                                  mem (assoc mem x #{})]
-                             (if (= i m)
-                               r
-                               (let [p (altv i)
-                                     pset (first-set g p mem)]
-                                 (recur (set/union r pset)
-                                        (inc i)
-                                        (assoc mem x (set/union (x mem) pset))))))))]
-                   (if (contains? xset empty-string)
-                     (recur (set/union r xset)
-                            (inc i)
-                            (assoc mem x xset))
-                     (set/union r xset))))))))))))
+  ([g [x :as xs] mem]
+   (cond
+     (empty? xs)
+     #{}
+
+     (= x empty-string)
+     (conj (first-set g (rest xs) mem) empty-string)
+
+     (terminal? g x)
+     #{x}
+
+     (contains? mem x)
+     (mem x)
+
+     (non-terminal? g x)
+     ((reduce
+       (fn [mem p]
+         (update mem x set/union (first-set g (into p (rest xs)) mem)))
+       (assoc mem x #{}) ((:productions g) x))
+      x)
+
+     :else
+     (println "Error:" x "in" xs "doesn't belong to the given grammar."))))
 
 ;(def init-follow-set
  ; {:expr #{} :expr-helper #{}
