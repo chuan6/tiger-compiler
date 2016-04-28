@@ -1,6 +1,7 @@
 (ns cfg
   (:require [clojure.set :as set]
             [clojure.test :as t]
+            [grammar :as tg]
             [tigerc.test :as tt]))
 
 (def empty-string :ε)
@@ -114,14 +115,14 @@
                          (remove (:terminals g))
                          (remove nts-processed')))))))))
 
-(defn- grammar-inv
-  {:test
-   #(tt/comprehend-tests
-     (for [g [sample-cal test-grammar if-grammar]]
-       (t/is (= true (grammar-inv g)))))}
-  [g]
+(defn- grammar-inv [g]
   (and (t/is (every? empty? (vals (diff-terminals-productions g))))
        (t/is (empty? (non-terminals-not-derivable-from-start g)))))
+
+;;the small grammars listed above should pass grammar-inv
+(tt/comprehend-tests
+ (for [g [sample-cal test-grammar if-grammar]]
+   (t/is (= true (grammar-inv g)))))
 
 (defn terminal? [grammar x]
   (if (or (= x empty-string) (= x end-marker))
@@ -133,6 +134,21 @@
     (not (nil? (get ps x)))))
 
 (defn first-set
+  {:test
+   #(let [g tg/slr
+          single-term-inputs (for [t (:terminals g)] [t])
+          two-terms-inputs (for [t (:terminals g) s (:terminals g)] [s t])
+          start-symbol-input [(:start g)]
+          empty-string-input [:if-tail :lvalue]]
+      (tt/comprehend-tests
+       (for [xs (concat single-term-inputs two-terms-inputs)
+             :let [expected #{(first xs)}]]
+         (t/is (= expected (first-set g xs))))
+       (t/is (= #{:ty-id :let :if :digits :minus :string :open-paren
+                  :break :for :id :nil :while}
+                (first-set g start-symbol-input)))
+       (t/is (= #{:else empty-string :id}
+                (first-set g empty-string-input)))))}
   ([g xs] (first-set g xs {}))
   ([g xs mem];use mem to avoid infinite loop, and improve efficiency for certain cases
    ;;(println xs)
