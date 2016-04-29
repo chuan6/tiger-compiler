@@ -139,7 +139,8 @@
           single-term-inputs (for [t (:terminals g)] [t])
           two-terms-inputs (for [t (:terminals g) s (:terminals g)] [s t])
           start-symbol-input [(:start g)]
-          empty-string-input [:if-tail :lvalue]]
+          empty-string-input [:if-tail :lvalue]
+          undefined-token-input [:if-tail :undefined-token]]
       (tt/comprehend-tests
        (for [xs single-term-inputs]
          (t/is (= #{(first xs)} (first-set g xs))))
@@ -155,7 +156,9 @@
                   :break :for :id :nil :while}
                 (first-set g start-symbol-input)))
        (t/is (= #{:else empty-string :id}
-                (first-set g empty-string-input)))))}
+                (first-set g empty-string-input)))
+       (t/is (= #{:else empty-string}
+                (first-set g undefined-token-input)))))}
   ([g xs] (first-set g xs {}))
   ([g [x :as xs] mem]
    (cond
@@ -179,7 +182,7 @@
       x)
 
      :else
-     (do (println "Error:" x "in" xs "doesn't belong to the given grammar.")
+     (do (println "Error:" x "doesn't belong to the given grammar.")
          #{}))))
 
 ;(def init-follow-set
