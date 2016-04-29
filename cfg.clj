@@ -179,7 +179,8 @@
       x)
 
      :else
-     (println "Error:" x "in" xs "doesn't belong to the given grammar."))))
+     (do (println "Error:" x "in" xs "doesn't belong to the given grammar.")
+         #{}))))
 
 ;(def init-follow-set
  ; {:expr #{} :expr-helper #{}
