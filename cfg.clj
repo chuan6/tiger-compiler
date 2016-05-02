@@ -261,6 +261,53 @@
                          (recur (rest alts)
                                 (follow-set-production grammar left right data))))))))))))
 
+(t/is
+ (= (follow-set tg/slr)
+    {:ty-field #{:close-paren :comma :close-brace}
+     :or-term #{:close-paren :semi-colon :do :else :close-bracket :pipe
+                :comma :type :$ :function :var :then :and :close-brace
+                :end :in :to}
+     :expr-seq #{:close-paren :semi-colon :end}
+     :if-tail #{:close-paren :semi-colon :do :else :close-bracket :comma
+                :type :$ :function :var :then :close-brace :end :in :to}
+     :var-decl #{:type :function :var :in}
+     :decl-list #{:type :function :var :in}
+     :cmp #{:digits :string :open-paren :id :nil}
+     :expr-list #{:close-paren :comma}
+     :ty #{:type :function :var :in}
+     :arith #{:close-paren :semi-colon :do :else :close-bracket :pipe
+              :comma :type :$ :function :var :then :close-brace :end
+              :in :to}
+     :cal-1 #{:digits :open-paren :id :nil}
+     :val #{:close-paren :semi-colon :do :else :close-bracket :comma :type
+            :$ :function :var :then :close-brace :end :in :to}
+     :lvalue #{:slash :close-paren :semi-colon :do :else :close-bracket
+               :pipe :comma :type :geq :minus :open-bracket :star :$
+               :function :assign :var :diamond :gt :plus :then :and
+               :close-brace :period :equal :end :leq :lt :in :to}
+     :term #{:slash :close-paren :semi-colon :do :else :close-bracket :pipe
+             :comma :type :geq :minus :star :$ :function :var :diamond :gt
+             :plus :then :and :close-brace :equal :end :leq :lt :in :to}
+     :cmp-term #{:close-paren :semi-colon :do :else :close-bracket :pipe
+                 :comma :type :geq :minus :$ :function :var :diamond :gt
+                 :plus :then :and :close-brace :equal :end :leq :lt :in
+                 :to}
+     :ty-fields #{:close-paren :comma :close-brace}
+     :field-list #{:comma :close-brace}
+     :ty-decl #{:type :function :var :in}
+     :cal-0 #{:digits :open-paren :id :nil}
+     :decl #{:type :function :var :in}
+     :expr #{:close-paren :semi-colon :do :else :close-bracket :comma :type
+             :$ :function :var :then :close-brace :end :in :to}
+     :factor #{:slash :close-paren :semi-colon :do :else :close-bracket
+               :pipe :comma :type :geq :minus :star :$ :function :var
+               :diamond :gt :plus :then :and :close-brace :equal :end :leq
+               :lt :in :to}
+     :fn-decl #{:type :function :var :in},
+     :and-term #{:close-paren :semi-colon :do :else :close-bracket :pipe
+                 :comma :type :$ :function :var :then :and :close-brace
+                 :end :in :to}}))
+
 (def aug-start :S)
 (defn aug-start-inv [g] (and (nil? (aug-start (:productions g)))
                              (nil? ((:terminals g) aug-start))))
