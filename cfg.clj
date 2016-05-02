@@ -233,24 +233,22 @@
             ;;TODO :else
             ))))))
 
+(defn- explode-productions [g]
+  (update g :productions
+          (fn [pd]
+            (->> {:left l :right r}
+                 (for [r (pd l)])
+                 (for [l (keys pd)])
+                 flatten))))
+
 (defn follow-set [grammar]
-  (let [prods (seq (:productions grammar))]
-    (loop [prods prods
-           state (init-follow-set-state grammar)]
-      (if (empty? prods)
-        (fixpoint (:subset-rule state) (:follow-set state))
-        (recur (rest prods)
-               (let [prod (first prods)
-                     left (nth prod 0)]
-                 (loop [alts (nth prod 1)
-                        state state]
-                   (if (empty? alts)
-                     state
-                     (let [right (first alts)]
-                       (if (= right empty-string)
-                         (recur (rest alts) state)
-                         (recur (rest alts)
-                                (follow-set-production grammar left right state))))))))))))
+  (loop [prods (:productions (explode-productions grammar))
+         state (init-follow-set-state grammar)]
+    (if (empty? prods)
+      (fixpoint (:subset-rule state) (:follow-set state))
+      (recur (rest prods)
+             (let [{l :left r :right} (first prods)]
+               (follow-set-production grammar l r state))))))
 
 (t/is
  (= (follow-set tg/slr)
