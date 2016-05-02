@@ -197,64 +197,60 @@
         (reduce {} nonterminals)
         (update start-symbol conj end-marker))))
 
-(defn init-data [grammar]
-  {:set (init-follow-set grammar)
-   :infer (fn [x] x)})
+(defn- init-follow-set-state [grammar]
+  {:follow-set (init-follow-set grammar) :subset-rule identity})
 
-(defn add-to-follow-set [s nt new]
-  (assoc s nt (set/union (get s nt)
-                         (disj new empty-string))))
-
-(defn iterate-til-fixed [f x]
+(defn- fixpoint [f x]
   (let [x' (f x)]
-    (if (= x' x) x (iterate-til-fixed f x')))) ;powerful '=' operation!
+    (if (= x' x) ;powerful '='!
+      x'
+      (recur f x'))))
 
-(defn ff [f x y]
-  (fn [s] (let [s (f s)]
-               (assoc s y (set/union (get s x) (get s y))))))
-
-(defn follow-set-production [grammar left right data]
-  (loop [right right
-         data data]
-    (if (empty? right)
-      data
-      (let [x (first right)
-            xs (rest right)]
-        (cond
-          (terminal? grammar x) (recur xs data)
-          (non-terminal? grammar x)
-          (let [x-next (first-set grammar (vec xs))
-                curr-set (add-to-follow-set (:set data) x x-next)]
+(defn follow-set-production [grammar left right state]
+  (let [chain-subset-rule ;add the rule: FOLLOW(left) is a subset of FOLLOW(x)
+        (fn [chained-rule x]
+          (fn [fs] (let [fs' (chained-rule fs)]
+                     (update fs' x set/union (fs' left)))))]
+    (loop [right right
+           state state]
+      (if (empty? right)
+        state
+        (let [x (first right)
+              xs (rest right)]
+          (cond
+            (terminal? grammar x) (recur xs state)
+            (non-terminal? grammar x)
+            (let [x-next (first-set grammar (vec xs))
+                  state' (update-in state [:follow-set x]
+                                    set/union (disj x-next empty-string))]
               (if (or (empty? x-next) (contains? x-next empty-string))
-                (recur xs
-                       ;; add rule "FOLLOW(left) is a subset of FOLLOW(x)"
-                       ;; to (:infer data). ff chains all the rules found,
-                       ;; and will produce a final rule which is to be
-                       ;; applied to iterate-til-fixed function.
-                       {:set curr-set :infer (ff (:infer data) left x)})
-                (recur xs
-                       (assoc data :set curr-set))))
-          ;;TODO :else
-          )))))
+                ;; add rule "FOLLOW(left) is a subset of FOLLOW(x)"
+                ;; to (:subset-rule state). ff chains all the rules found,
+                ;; and will produce a final rule which is to be
+                ;; applied to fixpoint function.
+                (recur xs (update state' :subset-rule chain-subset-rule x))
+                (recur xs state')))
+            ;;TODO :else
+            ))))))
 
 (defn follow-set [grammar]
   (let [prods (seq (:productions grammar))]
     (loop [prods prods
-           data (init-data grammar)]
+           state (init-follow-set-state grammar)]
       (if (empty? prods)
-        (iterate-til-fixed (:infer data) (:set data))
+        (fixpoint (:subset-rule state) (:follow-set state))
         (recur (rest prods)
                (let [prod (first prods)
                      left (nth prod 0)]
                  (loop [alts (nth prod 1)
-                        data data]
+                        state state]
                    (if (empty? alts)
-                     data
+                     state
                      (let [right (first alts)]
                        (if (= right empty-string)
-                         (recur (rest alts) data)
+                         (recur (rest alts) state)
                          (recur (rest alts)
-                                (follow-set-production grammar left right data))))))))))))
+                                (follow-set-production grammar left right state))))))))))))
 
 (t/is
  (= (follow-set tg/slr)
@@ -424,7 +420,7 @@
 
         coll #{(lr-closure #{{:left aug-start :nth 0 :pos 0}} g)}
         ]
-    (iterate-til-fixed f coll)))
+    (fixpoint f coll)))
 
 (def action-shift {:action :shift :state 0})
 (def action-reduce {:action :reduce :production nil})
