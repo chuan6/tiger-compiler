@@ -190,17 +190,12 @@
   ; :term #{} :term-helper #{}
    ;:factor #{}})
 
-(defn init-follow-set [grammar]
-  (let [p (seq (:productions grammar))]
-    (loop [result {}
-           ps     p]
-      (if (empty? ps)
-        result
-        (let [nt (nth (first ps) 0)]
-          (recur (assoc result nt
-                        (if (= nt (:start grammar))
-                          #{end-marker} #{}))
-                 (rest ps)))))))
+(defn- init-follow-set [grammar]
+  (let [nonterminals (keys (:productions grammar))
+        start-symbol (:start grammar)]
+    (-> #(assoc %1 %2 #{})
+        (reduce {} nonterminals)
+        (update start-symbol conj end-marker))))
 
 (defn init-data [grammar]
   {:set (init-follow-set grammar)
