@@ -206,32 +206,26 @@
       x'
       (recur f x'))))
 
-(defn follow-set-production [grammar left right state]
+(defn- follow-set-production [grammar left right state]
   (let [chain-subset-rule ;add the rule: FOLLOW(left) is a subset of FOLLOW(x)
         (fn [chained-rule x]
           (fn [fs] (let [fs' (chained-rule fs)]
-                     (update fs' x set/union (fs' left)))))]
-    (loop [right right
-           state state]
-      (if (empty? right)
-        state
-        (let [x (first right)
-              xs (rest right)]
-          (cond
-            (terminal? grammar x) (recur xs state)
-            (non-terminal? grammar x)
-            (let [x-next (first-set grammar (vec xs))
-                  state' (update-in state [:follow-set x]
-                                    set/union (disj x-next empty-string))]
-              (if (or (empty? x-next) (contains? x-next empty-string))
-                ;; add rule "FOLLOW(left) is a subset of FOLLOW(x)"
-                ;; to (:subset-rule state). ff chains all the rules found,
-                ;; and will produce a final rule which is to be
-                ;; applied to fixpoint function.
-                (recur xs (update state' :subset-rule chain-subset-rule x))
-                (recur xs state')))
-            ;;TODO :else
-            ))))))
+                     (update fs' x set/union (fs' left)))))
+
+        segments
+        (filter #(non-terminal? grammar (first %))
+                (take-while seq (iterate rest right)))]
+    (reduce
+     (fn [ret [x & xs]]
+       (assert (non-terminal? grammar x))
+       (let [x-nexts (first-set grammar xs)]
+         (cond-> ret
+           true
+           (update-in [:follow-set x] set/union (disj x-nexts empty-string))
+
+           (or (empty? x-nexts) (contains? x-nexts empty-string))
+           (update :subset-rule chain-subset-rule x))))
+     state segments)))
 
 (defn- explode-productions [g]
   (update g :productions
