@@ -185,10 +185,10 @@
      (do (println "Error:" x "doesn't belong to the given grammar.")
          #{}))))
 
-;(def init-follow-set
- ; {:expr #{} :expr-helper #{}
-  ; :term #{} :term-helper #{}
-   ;:factor #{}})
+(defn- exploded-productions [{pd :productions}]
+  (flatten (for [l (keys pd)]
+             (for [r (pd l)]
+               {:left l :right r}))))
 
 (defn- init-follow-set [grammar]
   (let [nonterminals (keys (:productions grammar))
@@ -200,14 +200,8 @@
 (defn- init-follow-set-state [grammar]
   {:follow-set (init-follow-set grammar) :subset-rule identity})
 
-(defn- fixpoint [f x]
-  (let [x' (f x)]
-    (if (= x' x) ;powerful '='!
-      x'
-      (recur f x'))))
-
-(defn- follow-set-production [grammar left right state]
-  (letfn [;;add the rule: FOLLOW(left) is a subset of FOLLOW(x)
+(defn- build-follow-set-and-rules [g state {:keys [left right]}]
+  (letfn [ ;;add the rule: FOLLOW(left) is a subset of FOLLOW(x)
           (chain-subset-rule [chained-rule x]
             (fn [fs]
               (let [fs' (chained-rule fs)]
@@ -216,34 +210,27 @@
           (algorithm
             ([curr-state] curr-state)
             ([curr-state [x & xs]]
-             (assert (nonterminal? grammar x))
-             (if-let [x-nexts (-> (first-set grammar xs)
-                                  (disj empty-string)
-                                  seq)]
+             (assert (nonterminal? g x))
+             (if-let [x-nexts (seq (-> (first-set g xs)
+                                       (disj empty-string)))]
                (update-in curr-state [:follow-set x] into x-nexts)
                (update curr-state :subset-rule chain-subset-rule x))))]
-    (transduce (filter #(nonterminal? grammar (first %)))
+    (transduce (filter #(nonterminal? g (first %)))
                algorithm
                state (->> right (iterate rest) (take-while seq)))))
 
-(defn- explode-productions [g]
-  (update g :productions
-          (fn [pd]
-            (->> {:left l :right r}
-                 (for [r (pd l)])
-                 (for [l (keys pd)])
-                 flatten))))
+(defn- fixpoint [f x]
+  (let [x' (f x)]
+    (if (= x' x) ;powerful '='!
+      x'
+      (recur f x'))))
 
-(defn follow-set [grammar]
-  (let [prods (:productions (explode-productions grammar))
-        state (init-follow-set-state grammar)
-        converge-state #(fixpoint (:subset-rule %) (:follow-set %))
-        new-state-by-a-prod #(follow-set-production grammar
-                                                    (:left %2)
-                                                    (:right %2)
-                                                    %1)]
+(defn follow-set [g]
+  (let [init-state (init-follow-set-state g)
+        converge-state #(fixpoint (:subset-rule %) (:follow-set %))]
     (converge-state
-     (reduce new-state-by-a-prod state prods))))
+     (reduce (partial build-follow-set-and-rules g)
+             init-state (exploded-productions g)))))
 
 (t/is
  (= (follow-set tg/slr)
