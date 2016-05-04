@@ -235,13 +235,15 @@
                  flatten))))
 
 (defn follow-set [grammar]
-  (loop [prods (:productions (explode-productions grammar))
-         state (init-follow-set-state grammar)]
-    (if (empty? prods)
-      (fixpoint (:subset-rule state) (:follow-set state))
-      (recur (rest prods)
-             (let [{l :left r :right} (first prods)]
-               (follow-set-production grammar l r state))))))
+  (let [prods (:productions (explode-productions grammar))
+        state (init-follow-set-state grammar)
+        converge-state #(fixpoint (:subset-rule %) (:follow-set %))
+        new-state-by-a-prod #(follow-set-production grammar
+                                                    (:left %2)
+                                                    (:right %2)
+                                                    %1)]
+    (converge-state
+     (reduce new-state-by-a-prod state prods))))
 
 (t/is
  (= (follow-set tg/slr)
