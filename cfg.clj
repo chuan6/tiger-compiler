@@ -74,7 +74,7 @@
     {:only-in-terminals (clojure.set/difference target tset)
      :only-in-productions (clojure.set/difference tset target)}))
 
-(defn non-terminals-not-derivable-from-start
+(defn nonterminals-not-derivable-from-start
   {:test
    #(let [gs [{:terminals #{:digit}
                :start :e
@@ -89,17 +89,17 @@
           non-derivable-nts (set (keys extra-nterm-prod))]
       (tt/comprehend-tests
        (for [g gs
-             :let [nts (non-terminals-not-derivable-from-start g)]]
+             :let [nts (nonterminals-not-derivable-from-start g)]]
          (t/is (empty? nts)))
        (for [g gs'
-             :let [nts (non-terminals-not-derivable-from-start g)]]
+             :let [nts (nonterminals-not-derivable-from-start g)]]
          (t/is (= non-derivable-nts nts)))))}
   [g]
   (assert (t/is (every? empty? (vals (diff-terminals-productions g))))
           (str "In the given grammar, there is 1 (or more) term(s) that"
                " neither is defined in terminals, nor has corresponding"
                " productions. The term(s) thus cannot be categorized as"
-               " terminal(s) or non-terminal(s), and will render"
+               " terminal(s) or nonterminal(s), and will render"
                " this function ineffective."))
   (let [nts (set (keys (:productions g)))]
    (loop [nts-processed #{}
@@ -117,7 +117,7 @@
 
 (defn- grammar-inv [g]
   (and (t/is (every? empty? (vals (diff-terminals-productions g))))
-       (t/is (empty? (non-terminals-not-derivable-from-start g)))))
+       (t/is (empty? (nonterminals-not-derivable-from-start g)))))
 
 ;;the small grammars listed above should pass grammar-inv
 (tt/comprehend-tests
@@ -129,7 +129,7 @@
     true
     (contains? (:terminals grammar) x)))
 
-(defn non-terminal? [grammar x]
+(defn nonterminal? [grammar x]
   (let [ps (:productions grammar)]
     (not (nil? (get ps x)))))
 
@@ -174,7 +174,7 @@
      (contains? mem x)
      (mem x)
 
-     (non-terminal? g x)
+     (nonterminal? g x)
      ((reduce
        (fn [mem p]
          (update mem x set/union (first-set g (into p (rest xs)) mem)))
@@ -207,25 +207,24 @@
       (recur f x'))))
 
 (defn- follow-set-production [grammar left right state]
-  (let [chain-subset-rule ;add the rule: FOLLOW(left) is a subset of FOLLOW(x)
-        (fn [chained-rule x]
-          (fn [fs] (let [fs' (chained-rule fs)]
-                     (update fs' x set/union (fs' left)))))
+  (letfn [;;add the rule: FOLLOW(left) is a subset of FOLLOW(x)
+          (chain-subset-rule [chained-rule x]
+            (fn [fs]
+              (let [fs' (chained-rule fs)]
+                (update fs' x set/union (fs' left)))))
 
-        segments
-        (filter #(non-terminal? grammar (first %))
-                (take-while seq (iterate rest right)))]
-    (reduce
-     (fn [ret [x & xs]]
-       (assert (non-terminal? grammar x))
-       (let [x-nexts (first-set grammar xs)]
-         (cond-> ret
-           true
-           (update-in [:follow-set x] set/union (disj x-nexts empty-string))
-
-           (or (empty? x-nexts) (contains? x-nexts empty-string))
-           (update :subset-rule chain-subset-rule x))))
-     state segments)))
+          (algorithm
+            ([curr-state] curr-state)
+            ([curr-state [x & xs]]
+             (assert (nonterminal? grammar x))
+             (if-let [x-nexts (-> (first-set grammar xs)
+                                  (disj empty-string)
+                                  seq)]
+               (update-in curr-state [:follow-set x] into x-nexts)
+               (update curr-state :subset-rule chain-subset-rule x))))]
+    (transduce (filter #(nonterminal? grammar (first %)))
+               algorithm
+               state (->> right (iterate rest) (take-while seq)))))
 
 (defn- explode-productions [g]
   (update g :productions
