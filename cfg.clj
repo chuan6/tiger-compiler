@@ -225,59 +225,43 @@
       x'
       (recur f x'))))
 
-(defn follow-set [g]
+(defn follow-set
+  {:test
+   #(let [empty-g {:terminals #{empty-string}
+                   :start :e
+                   :productions {:e [[empty-string]]}}
+          left-recursive-g (update-in empty-g [:productions :e]
+                                      conj [:e])
+          simple-g (-> empty-g
+                       (update :terminals conj \.)
+                       (update-in [:productions :e] conj [:e \.]))
+          require-converge-g (-> empty-g
+                                 (update :terminals set/union #{\, \.})
+                                 (update-in [:productions :e] conj [:e \, :t])
+                                 (assoc-in [:productions :t] [[:t \.]]))]
+      (tt/comprehend-tests
+       (let [flwset (follow-set empty-g)]
+         (t/is (= #{end-marker} (:e flwset))))
+       (let [flwset (follow-set left-recursive-g)]
+         (t/is (= #{end-marker} (:e flwset))))
+       (let [flwset (follow-set simple-g)]
+         (t/is (= #{end-marker \.} (:e flwset))))
+       (let [flwset (follow-set require-converge-g)]
+         [(t/is (= #{end-marker \,} (:e flwset)))
+          (t/is (= #{end-marker \, \.} (:t flwset)))])
+       (let [flwset (follow-set tg/slr)] ;require multiple times to reach fixpoint
+         (t/is (= #{end-marker :slash :close-paren :semi-colon :do :else
+                    :close-bracket :pipe :comma :type :geq :minus
+                    :open-bracket :star :function :assign :var :diamond
+                    :gt :plus :then :and :close-brace :period :equal :end
+                    :leq :lt :in :to}
+                  (:lvalue flwset))))))}
+  [g]
   (let [init-state (init-follow-set-state g)
         converge-state #(fixpoint (:subset-rule %) (:follow-set %))]
     (converge-state
      (reduce (partial build-follow-set-and-rules g)
              init-state (exploded-productions g)))))
-
-(t/is
- (= (follow-set tg/slr)
-    {:ty-field #{:close-paren :comma :close-brace}
-     :or-term #{:close-paren :semi-colon :do :else :close-bracket :pipe
-                :comma :type :$ :function :var :then :and :close-brace
-                :end :in :to}
-     :expr-seq #{:close-paren :semi-colon :end}
-     :if-tail #{:close-paren :semi-colon :do :else :close-bracket :comma
-                :type :$ :function :var :then :close-brace :end :in :to}
-     :var-decl #{:type :function :var :in}
-     :decl-list #{:type :function :var :in}
-     :cmp #{:digits :string :open-paren :id :nil}
-     :expr-list #{:close-paren :comma}
-     :ty #{:type :function :var :in}
-     :arith #{:close-paren :semi-colon :do :else :close-bracket :pipe
-              :comma :type :$ :function :var :then :close-brace :end
-              :in :to}
-     :cal-1 #{:digits :open-paren :id :nil}
-     :val #{:close-paren :semi-colon :do :else :close-bracket :comma :type
-            :$ :function :var :then :close-brace :end :in :to}
-     :lvalue #{:slash :close-paren :semi-colon :do :else :close-bracket
-               :pipe :comma :type :geq :minus :open-bracket :star :$
-               :function :assign :var :diamond :gt :plus :then :and
-               :close-brace :period :equal :end :leq :lt :in :to}
-     :term #{:slash :close-paren :semi-colon :do :else :close-bracket :pipe
-             :comma :type :geq :minus :star :$ :function :var :diamond :gt
-             :plus :then :and :close-brace :equal :end :leq :lt :in :to}
-     :cmp-term #{:close-paren :semi-colon :do :else :close-bracket :pipe
-                 :comma :type :geq :minus :$ :function :var :diamond :gt
-                 :plus :then :and :close-brace :equal :end :leq :lt :in
-                 :to}
-     :ty-fields #{:close-paren :comma :close-brace}
-     :field-list #{:comma :close-brace}
-     :ty-decl #{:type :function :var :in}
-     :cal-0 #{:digits :open-paren :id :nil}
-     :decl #{:type :function :var :in}
-     :expr #{:close-paren :semi-colon :do :else :close-bracket :comma :type
-             :$ :function :var :then :close-brace :end :in :to}
-     :factor #{:slash :close-paren :semi-colon :do :else :close-bracket
-               :pipe :comma :type :geq :minus :star :$ :function :var
-               :diamond :gt :plus :then :and :close-brace :equal :end :leq
-               :lt :in :to}
-     :fn-decl #{:type :function :var :in},
-     :and-term #{:close-paren :semi-colon :do :else :close-bracket :pipe
-                 :comma :type :$ :function :var :then :and :close-brace
-                 :end :in :to}}))
 
 (def aug-start :S)
 (defn aug-start-inv [g] (and (nil? (aug-start (:productions g)))
