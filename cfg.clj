@@ -249,13 +249,14 @@
        (let [flwset (follow-set require-converge-g)]
          [(t/is (= #{end-marker \,} (:e flwset)))
           (t/is (= #{end-marker \, \.} (:t flwset)))])
-       (let [flwset (follow-set tg/slr)] ;require multiple times to reach fixpoint
-         (t/is (= #{end-marker :slash :close-paren :semi-colon :do :else
-                    :close-bracket :pipe :comma :type :geq :minus
-                    :open-bracket :star :function :assign :var :diamond
-                    :gt :plus :then :and :close-brace :period :equal :end
-                    :leq :lt :in :to}
-                  (:lvalue flwset))))))}
+       (let [flwset (follow-set tg/slr)
+             lvalue #{end-marker :slash :close-paren :semi-colon :do :else
+                      :close-bracket :pipe :comma :type :geq :minus
+                      :open-bracket :star :function :assign :var :diamond
+                      :gt :plus :then :and :close-brace :period :equal :end
+                      :leq :lt :in :to}]
+         [(t/is (empty? (set/difference (:lvalue flwset) lvalue)))
+          (t/is (empty? (set/difference lvalue (:lvalue flwset))))])))}
   [g]
   (let [init-state (init-follow-set-state g)
         converge-state #(fixpoint (:subset-rule %) (:follow-set %))]
