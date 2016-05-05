@@ -131,7 +131,7 @@
 
 (defn nonterminal? [grammar x]
   (let [ps (:productions grammar)]
-    (not (nil? (get ps x)))))
+    (boolean (get ps x))))
 
 (defn first-set
   {:test
@@ -278,7 +278,7 @@
 
 (def lr-item {:left aug-start :nth 0 :pos 0})
 
-(defn valid-lr-item? [item-x g]
+(defn valid-lr-item? [g item-x]
   (let [{nt :left x :nth y :pos} item-x
         prod-dict (:productions g)
         v (nt prod-dict)]
@@ -287,20 +287,20 @@
 ;;expect valid item
 (defn end-lr-item?
   "Is the item at the end of its production?"
-  [item-x g]
+  [g item-x]
   (let [{nt :left x :nth y :pos} item-x
         prod-dict (:productions g)
         n (count ((nt prod-dict) x))]
     (= n y)))
 
 ;;expect valid item
-(defn decode-lr-item [item-x g]
+(defn decode-lr-item [g item-x]
   (let [{nt :left x :nth y :pos} item-x
         prod-dict (:productions g)]
     (((nt prod-dict) x) y)))
 
 ;;expect valid item
-(defn forward-lr-item [item-x g]
+(defn forward-lr-item [g item-x]
   (let [{nt :left x :nth y :pos} item-x
         prod-dict (:productions g)
         limit (count ((nt prod-dict) x))
@@ -308,20 +308,16 @@
     (if (<= y limit) (assoc item-x :pos y))))
 
 (defn lr-closure [lr-item-set g]
-  (assert ;every item is valid in g
-   (loop [t true s (seq lr-item-set)]
-     (if (empty? s) t
-         (recur (and t (valid-lr-item? (first s) g))
-                (rest s)))))
+  (assert (every? (partial valid-lr-item? g) lr-item-set))
   (loop [cls #{} s (seq lr-item-set) done-set #{}]
     (if (empty? s)
       ;;add initial item set to closure in the end, to ensure that
       ;;done-set works as intended
       (clojure.set/union cls lr-item-set)
       (let [item-x (first s)]
-        (if (end-lr-item? item-x g)
+        (if (end-lr-item? g item-x)
           (recur cls (rest s) done-set)
-          (let [x (decode-lr-item item-x g)
+          (let [x (decode-lr-item g item-x)
                 prod-dict (:productions g)
                 v (x prod-dict)]
             (if (or (nil? v)
@@ -336,27 +332,23 @@
                               (if (= i n)
                                 [cls s]
                                 (let [item-y (assoc item-x :nth i)
-                                      y (decode-lr-item item-y g)]
+                                      y (decode-lr-item g item-y)]
                                   (recur (conj cls item-y)
                                          (if (y prod-dict) (conj s item-y) s)
                                          (inc i)))))]
                 (recur cls s (conj done-set x))))))))))
 
 (defn lr-goto [lr-item-set x g]
-  (assert ;x is a grammar symbol of g, and every item in lr-item-set is valid
-   (and (or (terminal? g x) (get (:productions g) x))
-        (loop [t true s (seq lr-item-set)]
-          (if (empty? s) t
-              (recur (and t (valid-lr-item? (first s) g))
-                     (rest s))))))
+  (assert (and (or (terminal? g x) (nonterminal? g x))
+               (every? (partial valid-lr-item? g) lr-item-set)))
   (let [lr-item-set (loop [r #{} s (seq lr-item-set)]
                       (if (empty? s) r
                           (recur
                            (let [item-y (first s)]
-                             (if (end-lr-item? item-y g) r
-                                 (let [y (decode-lr-item item-y g)]
+                             (if (end-lr-item? g item-y) r
+                                 (let [y (decode-lr-item g item-y)]
                                    (if (not (= y x)) r
-                                     (conj r (forward-lr-item item-y g))))))
+                                     (conj r (forward-lr-item g item-y))))))
                            (rest s))))]
     (lr-closure lr-item-set g)))
 
@@ -435,8 +427,8 @@
   (let [terms      (seq (conj (:terminals g) end-marker))
         state      (fn [items] (state-by-items ccc items))
         items      (fn [state] (items-by-state ccc state))
-        decode     (fn [item] (decode-lr-item item g))
-        end?       (fn [item] (end-lr-item? item g))
+        decode     (partial decode-lr-item g)
+        end?       (partial end-lr-item? g)
         act-shift  (fn [state] (assoc action-shift :state state))
         act-reduce (fn [production] (assoc action-reduce :production production))
         act-accept action-accept
