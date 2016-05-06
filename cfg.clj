@@ -307,7 +307,42 @@
         y (inc y)]
     (if (<= y limit) (assoc item-x :pos y))))
 
-(defn lr-closure [lr-item-set g]
+(defn lr-closure
+  {:test
+   #(let [{pd :productions :as g}
+          test-grammar
+
+          start-item
+          {:left (:start g) :nth 0 :pos 0}
+
+          items-at-terminal
+          (->> item
+               (for [i (range (count ((pd l) n)))
+                     :let [item {:left l :nth n :pos i}
+                           decoded (decode-lr-item g item)]
+                     :when (terminal? g decoded)])
+               (for [n (range (count (pd l)))])
+               (for [l (keys pd)])
+               flatten)
+
+          step-item
+          {:left :t :nth 0 :pos 2}]
+      (tt/comprehend-tests
+       (t/is (= #{} (lr-closure #{} g)))
+       (for [item items-at-terminal]
+         (t/is (= #{item} (lr-closure #{item} g))))
+       (t/is (= #{step-item
+                  {:left :f :nth 0 :pos 0}
+                  {:left :f :nth 1 :pos 0}}
+                (lr-closure #{step-item} g)))
+       (t/is (= #{start-item
+                  {:left :e, :nth 1, :pos 0}
+                  {:left :t, :nth 0, :pos 0}
+                  {:left :t, :nth 1, :pos 0}
+                  {:left :f, :nth 0, :pos 0}
+                  {:left :f, :nth 1, :pos 0}}
+                (lr-closure #{start-item} g)))))}
+  [lr-item-set g]
   (assert (every? (partial valid-lr-item? g) lr-item-set))
   (loop [cls #{} s (seq lr-item-set) done-set #{}]
     (if (empty? s)
@@ -319,7 +354,7 @@
           (recur cls (rest s) done-set)
           (let [x (decode-lr-item g item-x)
                 prod-dict (:productions g)
-                v (x prod-dict)]
+                v (prod-dict x)]
             (if (or (nil? v)
                     (done-set x))
               ;;either x is a terminal grammar symbol, or relevant items
@@ -334,7 +369,7 @@
                                 (let [item-y (assoc item-x :nth i)
                                       y (decode-lr-item g item-y)]
                                   (recur (conj cls item-y)
-                                         (if (y prod-dict) (conj s item-y) s)
+                                         (if (prod-dict y) (conj s item-y) s)
                                          (inc i)))))]
                 (recur cls s (conj done-set x))))))))))
 
