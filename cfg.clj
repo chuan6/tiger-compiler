@@ -342,36 +342,30 @@
                   {:left :f, :nth 0, :pos 0}
                   {:left :f, :nth 1, :pos 0}}
                 (lr-closure #{start-item} g)))))}
-  [lr-item-set g]
+  [lr-item-set {pd :productions :as g}]
   (assert (every? (partial valid-lr-item? g) lr-item-set))
-  (loop [cls #{} s (seq lr-item-set) done-set #{}]
-    (if (empty? s)
-      ;;add initial item set to closure in the end, to ensure that
-      ;;done-set works as intended
-      (clojure.set/union cls lr-item-set)
-      (let [item-x (first s)]
-        (if (end-lr-item? g item-x)
-          (recur cls (rest s) done-set)
-          (let [x (decode-lr-item g item-x)
-                prod-dict (:productions g)
-                v (prod-dict x)]
-            (if (or (nil? v)
-                    (done-set x))
-              ;;either x is a terminal grammar symbol, or relevant items
-              ;;of which :left is x has already been added to closure
-              (recur cls (rest s) done-set)
-              ;;otherwise, expand closure on x, and maybe further
-              (let [item-x (assoc lr-item :left x)
-                    n (count v)
-                    [cls s] (loop [cls cls s (rest s) i 0]
-                              (if (= i n)
-                                [cls s]
-                                (let [item-y (assoc item-x :nth i)
-                                      y (decode-lr-item g item-y)]
-                                  (recur (conj cls item-y)
-                                         (if (prod-dict y) (conj s item-y) s)
-                                         (inc i)))))]
-                (recur cls s (conj done-set x))))))))))
+  (let [decode
+        (partial decode-lr-item g)
+
+        nonterminal-item?
+        (comp (partial nonterminal? g) decode)
+
+        nonterminal-items
+        (partial set/select nonterminal-item?)
+
+        items-at-the-beginning
+        (fn [nt]
+          (->> {:left nt :nth n :pos 0}
+               (for [n (range (count (pd nt)))])))
+
+        expand-per-nt-item
+        (fn [ret nt-item]
+          (into ret (items-at-the-beginning (decode nt-item))))
+
+        expand
+        (fn [r]
+          (reduce expand-per-nt-item r (nonterminal-items r)))]
+    (fixpoint expand lr-item-set)))
 
 (defn lr-goto [lr-item-set x g]
   (assert (and (or (terminal? g x) (nonterminal? g x))
