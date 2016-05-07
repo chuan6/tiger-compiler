@@ -354,9 +354,10 @@
         (partial set/select nonterminal-item?)
 
         items-at-the-beginning
-        (fn [nt]
-          (->> {:left nt :nth n :pos 0}
-               (for [n (range (count (pd nt)))])))
+        (memoize
+         (fn [nt]
+           (->> {:left nt :nth n :pos 0}
+                (for [n (range (count (pd nt)))]))))
 
         expand-per-nt-item
         (fn [ret nt-item]
