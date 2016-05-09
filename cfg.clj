@@ -278,6 +278,26 @@
 
 (def lr-item {:left aug-start :nth 0 :pos 0})
 
+(defn lr-item-functions [{pd :productions :as g}]
+  (fn [method {nt :left x :nth y :pos}]
+   (letfn [(valid? []
+             (or (end-position?) (get-in (pd nt) [x y])))
+
+           (end-position? []
+             (let [v ((pd nt) x)]
+               (= y (count v))))
+
+           (decode []
+             (get-in (pd nt) [x y]))
+
+           (forward []
+             {:left nt :nth x :pos (inc y)})]
+     (case method
+       :valid?        (valid?)
+       :end-position? (end-position?)
+       :decode        (decode)
+       :forward       (forward)))))
+
 (defn valid-lr-item? [g item-x]
   (let [{nt :left x :nth y :pos} item-x
         prod-dict (:productions g)
