@@ -278,34 +278,87 @@
 
 (def lr-item {:left aug-start :nth 0 :pos 0})
 
-(defn valid-lr-item? [g item-x]
-  (let [{nt :left x :nth y :pos} item-x
-        prod-dict (:productions g)
-        v (nt prod-dict)]
-    (and v (>= x 0) (>= y 0) (< x (count v)) (<= y (count (v x))))))
+(declare end-position-lr-item?)
+(declare decode-lr-item?)
+
+(defn valid-lr-item?
+  {:test
+   #(let [g test-grammar
+          all-valid-items (->> {:left nt :nth x :pos y}
+                           (for [y (range (count ((pd nt) x)))])
+                           (for [x (range (count (pd nt)))])
+                           (for [nt (keys pd)])
+                           (let [pd (:productions g)])
+                           flatten)
+          invalid-items [{:left :not-defined :nth 0 :pos 0}
+                         {:left :e :nth 0 :pos -1}
+                         {:left :e :nth 0 :pos 4}
+                         {:left :e :nth -1 :pos 0}
+                         {:left :e :nth 2 :pos 0}]]
+      (tt/comprehend-tests
+       (for [item all-valid-items]
+         (t/is (valid-lr-item? g item)))
+       (for [item invalid-items]
+         (t/is (not (valid-lr-item? g item))))))}
+  [g item]
+  (or (end-position-lr-item? g item)
+      (boolean (decode-lr-item g item))))
 
 ;;expect valid item
-(defn end-lr-item?
+(defn end-position-lr-item?
   "Is the item at the end of its production?"
-  [g item-x]
-  (let [{nt :left x :nth y :pos} item-x
-        prod-dict (:productions g)
-        n (count ((nt prod-dict) x))]
-    (= n y)))
+  {:test
+   #(let [g test-grammar
+
+          items-at-the-end-position
+          (->> {:left nt :nth x :pos (count ((pd nt) x))}
+               (for [x (range (count (pd nt)))])
+               (for [nt (keys pd)])
+               (let [pd (:productions g)])
+               flatten)
+
+          items-not-at-the-end-position
+          (into [{:left :not-defined :nth 0 :pos 0}
+                 {:left :e :nth 0 :pos 4}
+                 {:left :e :nth 0 :pos 2}]
+                (->> {:left nt :nth x :pos 0}
+                     (for [x (range (count (pd nt)))])
+                     (for [nt (keys pd)])
+                     (let [pd (:productions g)])
+                     flatten))]
+      (tt/comprehend-tests
+       (for [item items-at-the-end-position]
+         (t/is (end-position-lr-item? g item)))
+       (for [item items-not-at-the-end-position]
+         (t/is (not (end-position-lr-item? g item))))))}
+  [{pd :productions} {nt :left x :nth y :pos}]
+  (when-let [prod-alt (get-in pd [nt x])]
+    (= (count prod-alt) y)))
 
 ;;expect valid item
-(defn decode-lr-item [g item-x]
-  (let [{nt :left x :nth y :pos} item-x
-        prod-dict (:productions g)]
-    (((nt prod-dict) x) y)))
+(defn decode-lr-item
+  {:test
+   #(let [g test-grammar]
+      (tt/comprehend-tests
+       (t/is (= :e (decode-lr-item g {:left :e :nth 0 :pos 0})))
+       (t/is (= :t (decode-lr-item g {:left :e :nth 0 :pos 2})))
+       (t/is (nil? (decode-lr-item g {:left :not-defined :nth 0 :pos 0})))
+       (t/is (nil? (decode-lr-item g {:left :e :nth 0 :pos 3})))))}
+  [{pd :productions} {nt :left x :nth y :pos}]
+  (get-in pd [nt x y]))
 
 ;;expect valid item
-(defn forward-lr-item [g item-x]
-  (let [{nt :left x :nth y :pos} item-x
-        prod-dict (:productions g)
-        limit (count ((nt prod-dict) x))
-        y (inc y)]
-    (if (<= y limit) (assoc item-x :pos y))))
+(defn forward-lr-item
+  {:test
+   #(let [g test-grammar]
+      (tt/comprehend-tests
+       (t/is (= {:left :e :nth 0 :pos 1} (forward-lr-item g {:left :e :nth 0 :pos 0})))
+       (t/is (= {:left :e :nth 0 :pos 2} (forward-lr-item g {:left :e :nth 0 :pos 1})))
+       (t/is (= {:left :e :nth 0 :pos 3} (forward-lr-item g {:left :e :nth 0 :pos 2})))
+       (t/is (nil? (forward-lr-item g {:left :e :nth 0 :pos 3})))))}
+  [g item]
+  (when-not (end-position-lr-item? g item)
+    (update item :pos inc)))
 
 (defn lr-closure
   {:test
@@ -375,7 +428,7 @@
                       (if (empty? s) r
                           (recur
                            (let [item-y (first s)]
-                             (if (end-lr-item? g item-y) r
+                             (if (end-position-lr-item? g item-y) r
                                  (let [y (decode-lr-item g item-y)]
                                    (if (not (= y x)) r
                                      (conj r (forward-lr-item g item-y))))))
@@ -458,7 +511,7 @@
         state      (fn [items] (state-by-items ccc items))
         items      (fn [state] (items-by-state ccc state))
         decode     (partial decode-lr-item g)
-        end?       (partial end-lr-item? g)
+        end?       (partial end-position-lr-item? g)
         act-shift  (fn [state] (assoc action-shift :state state))
         act-reduce (fn [production] (assoc action-reduce :production production))
         act-accept action-accept
