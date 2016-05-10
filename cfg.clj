@@ -471,27 +471,19 @@
     (lr-closure (set new-kernel-items) g)))
 
 ;;expect augmented grammar
-(defn canonical-coll [g]
+(defn- canonical-coll [g]
   (let [symbols (list-grammar-symbols g)
 
-        reducer-0 ;for each grammar symbol in grammar g
-        (fn [lr-item-set]
-          (fn [coll sym]
-            (let [x (lr-goto lr-item-set sym g)]
-              (if (or (empty? x) (contains? coll x))
-                coll (conj coll x)))))
-
-        reducer-1 ;for each item set in current collection
-        (fn [coll lr-item-set]
-          (reduce (reducer-0 lr-item-set) coll symbols))
-
-        f
+        generate-states
         (fn [coll]
-          (reduce reducer-1 coll (seq coll)))
+          (for [state coll
+                sym symbols]
+            (lr-goto state sym g)))
 
-        coll #{(lr-closure #{{:left aug-start :nth 0 :pos 0}} g)}
-        ]
-    (fixpoint f coll)))
+        update-coll
+        (fn [coll]
+          (into coll (filter seq (generate-states coll))))]
+    (fixpoint update-coll #{(lr-closure #{lr-item} g)})))
 
 (def action-shift {:action :shift :state 0})
 (def action-reduce {:action :reduce :production nil})
