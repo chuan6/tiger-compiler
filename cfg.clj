@@ -449,25 +449,18 @@
                :let [ret (lr-goto #{item} sym g)]]
            [(t/is (= (lr-closure ret g) ret))
             (t/is (= #{} ret))]))
-       (t/is (= #{{:left :e, :nth 0, :pos 2}
-                  {:left :t, :nth 0, :pos 0}
-                  {:left :t, :nth 1, :pos 0}
-                  {:left :f, :nth 0, :pos 0}
-                  {:left :f, :nth 1, :pos 0}}
-                (lr-goto #{{:left :e :nth 0 :pos 1}} :plus g)))))}
+       (t/is (= #{{:left :e, :nth 0, :pos 1}
+                  {:left :f, :nth 0, :pos 2}}
+                (lr-goto #{{:left :e :nth 0 :pos 0}
+                           {:left :f :nth 0 :pos 1}} :e g)))))}
   [lr-item-set x g]
   (assert (and (or (terminal? g x) (nonterminal? g x))
                (every? (partial valid-lr-item? g) lr-item-set)))
-  (let [lr-item-set (loop [r #{} s (seq lr-item-set)]
-                      (if (empty? s) r
-                          (recur
-                           (let [item-y (first s)]
-                             (if (end-position-lr-item? g item-y) r
-                                 (let [y (decode-lr-item g item-y)]
-                                   (if (not (= y x)) r
-                                     (conj r (forward-lr-item g item-y))))))
-                           (rest s))))]
-    (lr-closure lr-item-set g)))
+  (let [new-kernel-items
+        (->> lr-item-set
+             (filter #(= (decode-lr-item g %) x))
+             (map (partial forward-lr-item g)))]
+    (lr-closure (set new-kernel-items) g)))
 
 (defn list-grammar-symbols [g]
   (let [s (seq (:terminals g))]
