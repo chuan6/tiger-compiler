@@ -279,16 +279,15 @@
 (def lr-item {:left aug-start :nth 0 :pos 0})
 
 (declare end-position-lr-item?)
-(declare decode-lr-item?)
+(declare decode-lr-item)
 
 (defn valid-lr-item?
   {:test
-   #(let [g test-grammar
+   #(let [{pd :productions :as g} test-grammar
           all-valid-items (->> {:left nt :nth x :pos y}
-                           (for [y (range (count ((pd nt) x)))])
+                           (for [y (range (inc (count ((pd nt) x))))])
                            (for [x (range (count (pd nt)))])
                            (for [nt (keys pd)])
-                           (let [pd (:productions g)])
                            flatten)
           invalid-items [{:left :not-defined :nth 0 :pos 0}
                          {:left :e :nth 0 :pos -1}
@@ -308,13 +307,12 @@
 (defn end-position-lr-item?
   "Is the item at the end of its production?"
   {:test
-   #(let [g test-grammar
+   #(let [{pd :productions :as g} test-grammar
 
           items-at-the-end-position
           (->> {:left nt :nth x :pos (count ((pd nt) x))}
                (for [x (range (count (pd nt)))])
                (for [nt (keys pd)])
-               (let [pd (:productions g)])
                flatten)
 
           items-not-at-the-end-position
@@ -324,7 +322,6 @@
                 (->> {:left nt :nth x :pos 0}
                      (for [x (range (count (pd nt)))])
                      (for [nt (keys pd)])
-                     (let [pd (:productions g)])
                      flatten))]
       (tt/comprehend-tests
        (for [item items-at-the-end-position]
@@ -421,7 +418,44 @@
           (reduce expand-per-nt-item r (nonterminal-items r)))]
     (fixpoint expand lr-item-set)))
 
-(defn lr-goto [lr-item-set x g]
+(declare list-grammar-symbols)
+
+(defn lr-goto
+  {:test
+   #(let [{pd :productions :as g}
+          test-grammar
+
+          items-at-the-end-position
+          (->> {:left nt :nth x :pos (count ((pd nt) x))}
+               (for [x (range (count (pd nt)))])
+               (for [nt (keys pd)])
+               flatten)
+
+          items-not-at-the-end-position
+          (->> {:left nt :nth x :pos y}
+               (for [y (range (count ((pd nt) x)))])
+               (for [x (range (count (pd nt)))])
+               (for [nt (keys pd)])
+               flatten)]
+      (tt/comprehend-tests
+       (t/is (= #{} (lr-goto #{} :e g)))
+       (for [item items-not-at-the-end-position
+             :let [sym (decode-lr-item g item)
+                   ret (lr-goto #{item} sym g)]]
+         [(t/is (= (lr-closure ret g) ret))
+          (t/is (= (lr-closure #{(forward-lr-item g item)} g) ret))])
+       (for [item items-at-the-end-position]
+         (for [sym (list-grammar-symbols g)
+               :let [ret (lr-goto #{item} sym g)]]
+           [(t/is (= (lr-closure ret g) ret))
+            (t/is (= #{} ret))]))
+       (t/is (= #{{:left :e, :nth 0, :pos 2}
+                  {:left :t, :nth 0, :pos 0}
+                  {:left :t, :nth 1, :pos 0}
+                  {:left :f, :nth 0, :pos 0}
+                  {:left :f, :nth 1, :pos 0}}
+                (lr-goto #{{:left :e :nth 0 :pos 1}} :plus g)))))}
+  [lr-item-set x g]
   (assert (and (or (terminal? g x) (nonterminal? g x))
                (every? (partial valid-lr-item? g) lr-item-set)))
   (let [lr-item-set (loop [r #{} s (seq lr-item-set)]
