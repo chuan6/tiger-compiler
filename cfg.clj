@@ -30,6 +30,16 @@
    :productions
    {:e [[:if :e :then :e] [:if :e :then :e :else :e]]}})
 
+(defn list-grammar-symbols
+  {:test
+   #(let [empty-g {:terminals #{} :productions {}}]
+      (tt/comprehend-tests
+       (t/is (empty? (list-grammar-symbols empty-g)))
+       (t/is (= #{:plus :times :open-paren :close-paren :id :e :t :f}
+                (set (list-grammar-symbols test-grammar))))))}
+  [{ts :terminals pd :productions}]
+  (into ts (keys pd)))
+
 (defn diff-terminals-productions
   {:test
    #(let [empty-g {:terminals #{} :productions {}}
@@ -418,8 +428,6 @@
           (reduce expand-per-nt-item r (nonterminal-items r)))]
     (fixpoint expand lr-item-set)))
 
-(declare list-grammar-symbols)
-
 (defn lr-goto
   {:test
    #(let [{pd :productions :as g}
@@ -454,17 +462,13 @@
                 (lr-goto #{{:left :e :nth 0 :pos 0}
                            {:left :f :nth 0 :pos 1}} :e g)))))}
   [lr-item-set x g]
-  (assert (and (or (terminal? g x) (nonterminal? g x))
-               (every? (partial valid-lr-item? g) lr-item-set)))
+  (assert (or (terminal? g x) (nonterminal? g x)))
+  (assert (every? (partial valid-lr-item? g) lr-item-set))
   (let [new-kernel-items
         (->> lr-item-set
              (filter #(= (decode-lr-item g %) x))
              (map (partial forward-lr-item g)))]
     (lr-closure (set new-kernel-items) g)))
-
-(defn list-grammar-symbols [g]
-  (let [s (seq (:terminals g))]
-    (concat s (keys (:productions g)))))
 
 ;;expect augmented grammar
 (defn canonical-coll [g]
