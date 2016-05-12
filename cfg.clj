@@ -472,17 +472,18 @@
 
 ;;expect augmented grammar
 (defn- canonical-coll [g]
-  (let [symbols (list-grammar-symbols g)
+  (letfn [(symbols-in-state [state]
+            (->> (map (partial decode-lr-item g) state)
+                 (remove nil?)))
 
-        generate-states
-        (fn [coll]
-          (for [state coll
-                sym symbols]
-            (lr-goto state sym g)))
+          (generate-states [coll]
+            (->> (lr-goto state sym g)
+                 (for [sym (symbols-in-state state)])
+                 (for [state coll])
+                 flatten))
 
-        update-coll
-        (fn [coll]
-          (into coll (filter seq (generate-states coll))))]
+          (update-coll [coll]
+            (into coll (filter seq (generate-states coll))))]
     (fixpoint update-coll #{(lr-closure #{lr-item} g)})))
 
 (def action-shift {:action :shift :state 0})
