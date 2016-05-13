@@ -507,41 +507,20 @@
 (def action-accept {:action :accept})
 (def action-error {:action :error})
 
-(defn items-by-state
-  "get item set from consolidated canonical collection by state"
-  [ccc state]
-  (get (:by-x ccc) state))
-
-(defn state-by-items
-  "get state number from consolidated canonical collection by item set"
-  [ccc items]
-  (get (:by-y ccc) items))
-
-(defn consolidate-cc
-  "Correspond each element of a canonical collection with a
-  sequence number; support query by an element, and by
-  a sequence number."
+(defn query-canonical-coll
   {:test
-   #(let [gs (map augment-grammar sample-grammars)
-
-          valid-result?
-          (fn [{x :by-x y :by-y :as ccc}]
-            (let [ks (keys y)
-                  head (= (count ks) (count x))
-                  tail (for [k ks]
-                         (= k (items-by-state ccc (state-by-items ccc k))))]
-              (every? true? (cons head tail))))]
+   #(let [gs (map augment-grammar sample-grammars)]
       (tt/comprehend-tests
        (for [g gs
-             :let [coll (canonical-coll g)]]
-         (t/is (valid-result? (consolidate-cc coll))))))}
+             :let [cc (canonical-coll g)
+                   [state->items items->state] (query-canonical-coll cc)]]
+         [(t/is (= cc (set (vals state->items))))
+          (t/is (= (set/map-invert state->items) items->state))])))}
   [cc]
-  (let [ccv (vec cc) n (count ccv)]
-    {:by-x ccv
-     :by-y (reduce
-            (fn [ret i]
-              (assoc ret (ccv i) i))
-            {} (range n))}))
+  (let [cc-seq (seq cc)
+        swap-pair (fn [x y] [y x])]
+    [(into {} (map-indexed vector cc-seq))
+     (into {} (map-indexed swap-pair cc-seq))]))
 
 ;;expect augmented grammar
 (defn slr-action-tab [g ccc prefer-shift?]
