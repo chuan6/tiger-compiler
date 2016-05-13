@@ -507,7 +507,15 @@
 (def action-accept {:action :accept})
 (def action-error {:action :error})
 
-(declare ccc-test)
+(defn items-by-state
+  "get item set from consolidated canonical collection by state"
+  [ccc state]
+  (get (:by-x ccc) state))
+
+(defn state-by-items
+  "get state number from consolidated canonical collection by item set"
+  [ccc items]
+  (get (:by-y ccc) items))
 
 (defn consolidate-cc
   "Correspond each element of a canonical collection with a
@@ -534,16 +542,6 @@
             (fn [ret i]
               (assoc ret (ccv i) i))
             {} (range n))}))
-
-(defn items-by-state
-  "get item set from consolidated canonical collection by state"
-  [ccc state]
-  (get (:by-x ccc) state))
-
-(defn state-by-items
-  "get state number from consolidated canonical collection by item set"
-  [ccc items]
-  (get (:by-y ccc) items))
 
 ;;expect augmented grammar
 (defn slr-action-tab [g ccc prefer-shift?]
