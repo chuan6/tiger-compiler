@@ -514,44 +514,36 @@
   sequence number; support query by an element, and by
   a sequence number."
   {:test
-   #(let [gs (map augment-grammar sample-grammars)]
+   #(let [gs (map augment-grammar sample-grammars)
+
+          valid-result?
+          (fn [{x :by-x y :by-y :as ccc}]
+            (let [ks (keys y)
+                  head (= (count ks) (count x))
+                  tail (for [k ks]
+                         (= k (items-by-state ccc (state-by-items ccc k))))]
+              (every? true? (cons head tail))))]
       (tt/comprehend-tests
        (for [g gs
              :let [coll (canonical-coll g)]]
-         (t/is (ccc-test (consolidate-cc coll))))))}
+         (t/is (valid-result? (consolidate-cc coll))))))}
   [cc]
   (let [ccv (vec cc) n (count ccv)]
     {:by-x ccv
-     :by-y (loop [ccm {} i 0]
-             (if (= i n)
-               ccm
-               (recur (assoc ccm (ccv i) i)
-                      (inc i))))}))
+     :by-y (reduce
+            (fn [ret i]
+              (assoc ret (ccv i) i))
+            {} (range n))}))
 
 (defn items-by-state
   "get item set from consolidated canonical collection by state"
   [ccc state]
-  (assert (>= state 0))
-  (let [v (:by-x ccc) n (count v)]
-    (if (< state n) (v state))))
+  (get (:by-x ccc) state))
 
 (defn state-by-items
   "get state number from consolidated canonical collection by item set"
   [ccc items]
   (get (:by-y ccc) items))
-
-(defn ccc-test [ccc]
-  (let [{x :by-x y :by-y} ccc
-        ks (keys y)]
-    (loop [t (= (count ks) (count x))
-           ks ks]
-      (if (or (not t) (empty? ks))
-        t
-        (recur (let [k (first ks)]
-                 (and t
-                      (= k (->> k (state-by-items ccc)
-                                (items-by-state ccc)))))
-               (rest ks))))))
 
 ;;expect augmented grammar
 (defn slr-action-tab [g ccc prefer-shift?]
