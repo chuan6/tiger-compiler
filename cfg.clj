@@ -405,8 +405,9 @@
                   {:left :f, :nth 0, :pos 0}
                   {:left :f, :nth 1, :pos 0}}
                 (lr-closure #{start-item} g)))))}
-  [lr-item-set {pd :productions :as g}]
-  (assert (every? (partial valid-lr-item? g) lr-item-set))
+  [lr-itemset {pd :productions :as g}]
+  (assert (every? (partial valid-lr-item? g) lr-itemset)
+          (str "failed item set: " lr-itemset " and g: " g))
   (let [decode
         (partial decode-lr-item g)
 
@@ -429,7 +430,7 @@
         expand
         (fn [r]
           (reduce expand-per-nt-item r (nonterminal-items r)))]
-    (fixpoint expand lr-item-set)))
+    (fixpoint expand lr-itemset)))
 
 (defn lr-goto
   {:test
@@ -464,24 +465,36 @@
                   {:left :f, :nth 0, :pos 2}}
                 (lr-goto #{{:left :e :nth 0 :pos 0}
                            {:left :f :nth 0 :pos 1}} :e g)))))}
-  [lr-item-set x g]
+  [lr-itemset x g]
   (assert (or (terminal? g x) (nonterminal? g x)))
-  (assert (every? (partial valid-lr-item? g) lr-item-set))
+  (assert (every? (partial valid-lr-item? g) lr-itemset))
   (let [new-kernel-items
-        (->> lr-item-set
+        (->> lr-itemset
              (filter #(= (decode-lr-item g %) x))
              (map (partial forward-lr-item g)))]
     (lr-closure (set new-kernel-items) g)))
 
-;;expect augmented grammar
-(defn- canonical-coll [g]
-  (letfn [(symbols-in-state [state]
-            (->> (map (partial decode-lr-item g) state)
-                 (remove nil?)))
+(defn- symbols-in-lr-itemset [g state]
+  (->> (map (partial decode-lr-item g) state)
+       (remove nil?)))
 
-          (generate-states [coll]
+;;expect augmented grammar
+(defn canonical-coll
+  {:test
+   #(let [gs (map augment-grammar sample-grammars)
+
+          valid-result?
+          (fn [g coll]
+            (->> (contains? coll (lr-goto state sym g))
+                 (for [sym (symbols-in-lr-itemset g state)])
+                 (for [state coll])))]
+      (tt/comprehend-tests
+       (for [g gs]
+         (t/is (valid-result? g (canonical-coll g))))))}
+  [g]
+  (letfn [(generate-states [coll]
             (->> (lr-goto state sym g)
-                 (for [sym (symbols-in-state state)])
+                 (for [sym (symbols-in-lr-itemset g state)])
                  (for [state coll])
                  flatten))
 
