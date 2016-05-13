@@ -7,6 +7,11 @@
 (def empty-string :ε)
 (def end-marker :$)
 
+(def empty-grammar
+  {:terminals #{empty-string}
+   :start :e
+   :productions {:e [[empty-string]]}})
+
 (def sample-cal
   {:terminals #{\+ \- \* \/ \( \) :num :ident}
    :start :goal
@@ -30,23 +35,24 @@
    :productions
    {:e [[:if :e :then :e] [:if :e :then :e :else :e]]}})
 
+(def ^:private sample-grammars
+  [empty-grammar sample-cal test-grammar if-grammar])
+
 (defn list-grammar-symbols
   {:test
-   #(let [empty-g {:terminals #{} :productions {}}]
-      (tt/comprehend-tests
-       (t/is (empty? (list-grammar-symbols empty-g)))
-       (t/is (= #{:plus :times :open-paren :close-paren :id :e :t :f}
-                (set (list-grammar-symbols test-grammar))))))}
+   #(tt/comprehend-tests
+     (t/is (= #{:e empty-string} (list-grammar-symbols empty-grammar)))
+     (t/is (= #{:plus :times :open-paren :close-paren :id :e :t :f}
+              (set (list-grammar-symbols test-grammar)))))}
   [{ts :terminals pd :productions}]
   (into ts (keys pd)))
 
 (defn diff-terminals-productions
   {:test
-   #(let [empty-g {:terminals #{} :productions {}}
-          gs [{:terminals #{:digit}
-               :start :e
-               :productions {:e [[:e :digit] [:digit]]}}
-              sample-cal test-grammar if-grammar]
+   #(let [gs (into [{:terminals #{:digit}
+                     :start :e
+                     :productions {:e [[:e :digit] [:digit]]}}]
+                   sample-grammars)
           terms #{:extra-terminal}
           gs-more-terms (map (fn [g]
                                (update g :terminals
@@ -58,7 +64,7 @@
                               gs)]
       (tt/comprehend-tests
        (let [{:keys [only-in-terminals only-in-productions]}
-             (diff-terminals-productions empty-g)]
+             (diff-terminals-productions empty-grammar)]
          [(t/is (empty? only-in-terminals))
           (t/is (empty? only-in-productions))])
        (for [g gs
@@ -86,10 +92,10 @@
 
 (defn nonterminals-not-derivable-from-start
   {:test
-   #(let [gs [{:terminals #{:digit}
-               :start :e
-               :productions {:e [[:e :digit] [:digit]]}}
-              sample-cal test-grammar if-grammar]
+   #(let [gs (into [{:terminals #{:digit}
+                     :start :e
+                     :productions {:e [[:e :digit] [:digit]]}}]
+                   sample-grammars)
           extra-term empty-string
           extra-nterm-prod {:extra-nonterminal [[extra-term]]}
           gs' (map (fn [g] (-> g
@@ -131,7 +137,7 @@
 
 ;;the small grammars listed above should pass grammar-inv
 (tt/comprehend-tests
- (for [g [sample-cal test-grammar if-grammar]]
+ (for [g sample-grammars]
    (t/is (= true (grammar-inv g)))))
 
 (defn terminal? [grammar x]
@@ -237,20 +243,17 @@
 
 (defn follow-set
   {:test
-   #(let [empty-g {:terminals #{empty-string}
-                   :start :e
-                   :productions {:e [[empty-string]]}}
-          left-recursive-g (update-in empty-g [:productions :e]
-                                      conj [:e])
-          simple-g (-> empty-g
+   #(let [g empty-grammar
+          left-recursive-g (update-in g [:productions :e] conj [:e])
+          simple-g (-> g
                        (update :terminals conj \.)
                        (update-in [:productions :e] conj [:e \.]))
-          require-converge-g (-> empty-g
+          require-converge-g (-> g
                                  (update :terminals set/union #{\, \.})
                                  (update-in [:productions :e] conj [:e \, :t])
                                  (assoc-in [:productions :t] [[:t \.]]))]
       (tt/comprehend-tests
-       (let [flwset (follow-set empty-g)]
+       (let [flwset (follow-set g)]
          (t/is (= #{end-marker} (:e flwset))))
        (let [flwset (follow-set left-recursive-g)]
          (t/is (= #{end-marker} (:e flwset))))
