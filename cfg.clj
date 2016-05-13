@@ -507,10 +507,18 @@
 (def action-accept {:action :accept})
 (def action-error {:action :error})
 
+(declare ccc-test)
+
 (defn consolidate-cc
   "Correspond each element of a canonical collection with a
   sequence number; support query by an element, and by
   a sequence number."
+  {:test
+   #(let [gs (map augment-grammar sample-grammars)]
+      (tt/comprehend-tests
+       (for [g gs
+             :let [coll (canonical-coll g)]]
+         (t/is (ccc-test (consolidate-cc coll))))))}
   [cc]
   (let [ccv (vec cc) n (count ccv)]
     {:by-x ccv
