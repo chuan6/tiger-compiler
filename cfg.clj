@@ -508,6 +508,10 @@
 (def action-error {:action :error})
 
 (defn indexed-canonical-coll
+  "produce two mappings: state->items and items->state, that are consistent,
+  meaning,
+  1) given a valid itemset x, we have (= x (state->items (items->state x)));
+  2) given a valid state i, we have (= i (items->state (state->items i)))"
   {:test
    #(let [gs (map augment-grammar sample-grammars)]
       (tt/comprehend-tests
@@ -574,6 +578,25 @@
                  (assoc row t (reduce (for-items its t) nil (seq its)))
                  (rest ts))))))]
     (reduce for-states [] (keys items->state))))
+
+(tt/comprehend-tests
+ (t/is
+  (=
+   [{:close-paren nil, :times nil, :$ nil, :open-paren {:action :shift, :state 10}, :id {:action :shift, :state 7}, :plus nil}
+    {:close-paren {:action :reduce, :production {:left :e, :nth 1}}, :times {:action :shift, :state 5}, :$ {:action :reduce, :production {:left :e, :nth 1}}, :open-paren nil, :id nil, :plus {:action :reduce, :production {:left :e, :nth 1}}}
+    {:close-paren {:action :reduce, :production {:left :f, :nth 0}}, :times {:action :reduce, :production {:left :f, :nth 0}}, :$ {:action :reduce, :production {:left :f, :nth 0}}, :open-paren nil, :id nil, :plus {:action :reduce, :production {:left :f, :nth 0}}}
+    {:close-paren {:action :reduce, :production {:left :e, :nth 0}}, :times {:action :shift, :state 5}, :$ {:action :reduce, :production {:left :e, :nth 0}}, :open-paren nil, :id nil, :plus {:action :reduce, :production {:left :e, :nth 0}}}
+    {:close-paren {:action :reduce, :production {:left :t, :nth 1}}, :times {:action :reduce, :production {:left :t, :nth 1}}, :$ {:action :reduce, :production {:left :t, :nth 1}}, :open-paren nil, :id nil, :plus {:action :reduce, :production {:left :t, :nth 1}}}
+    {:close-paren nil, :times nil, :$ nil, :open-paren {:action :shift, :state 10}, :id {:action :shift, :state 7}, :plus nil}
+    {:close-paren {:action :shift, :state 2}, :times nil, :$ nil, :open-paren nil, :id nil, :plus {:action :shift, :state 0}}
+    {:close-paren {:action :reduce, :production {:left :f, :nth 1}}, :times {:action :reduce, :production {:left :f, :nth 1}}, :$ {:action :reduce, :production {:left :f, :nth 1}}, :open-paren nil, :id nil, :plus {:action :reduce, :production {:left :f, :nth 1}}}
+    {:close-paren nil, :times nil, :$ nil, :open-paren {:action :shift, :state 10}, :id {:action :shift, :state 7}, :plus nil}
+    {:close-paren {:action :reduce, :production {:left :t, :nth 0}}, :times {:action :reduce, :production {:left :t, :nth 0}}, :$ {:action :reduce, :production {:left :t, :nth 0}}, :open-paren nil, :id nil, :plus {:action :reduce, :production {:left :t, :nth 0}}}
+    {:close-paren nil, :times nil, :$ nil, :open-paren {:action :shift, :state 10}, :id {:action :shift, :state 7}, :plus nil}
+    {:close-paren nil, :times nil, :$ {:action :accept}, :open-paren nil, :id nil, :plus {:action :shift, :state 0}}]
+   (let [ag (augment-grammar test-grammar)
+         items->state (:items->state (indexed-canonical-coll (canonical-coll ag)))]
+     (slr-action-tab ag items->state false)))))
 
 ;;expect augmented grammar
 (defn slr-goto-tab [g items->state]
