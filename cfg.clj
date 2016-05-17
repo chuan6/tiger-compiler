@@ -507,26 +507,27 @@
 (def action-accept {:action :accept})
 (def action-error {:action :error})
 
-(defn query-canonical-coll
+(defn indexed-canonical-coll
   {:test
    #(let [gs (map augment-grammar sample-grammars)]
       (tt/comprehend-tests
        (for [g gs
-             :let [cc (canonical-coll g)
-                   [state->items items->state] (query-canonical-coll cc)]]
+             :let [cc
+                   (canonical-coll g)
+
+                   {:keys [state->items items->state]}
+                   (indexed-canonical-coll cc)]]
          [(t/is (= cc (set (vals state->items))))
           (t/is (= (set/map-invert state->items) items->state))])))}
   [cc]
   (let [cc-seq (seq cc)
         swap-pair (fn [x y] [y x])]
-    [(into {} (map-indexed vector cc-seq))
-     (into {} (map-indexed swap-pair cc-seq))]))
+    {:state->items (into {} (map-indexed vector cc-seq))
+     :items->state (into {} (map-indexed swap-pair cc-seq))}))
 
 ;;expect augmented grammar
-(defn slr-action-tab [g ccc prefer-shift?]
+(defn slr-action-tab [g items->state prefer-shift?]
   (let [terms      (seq (conj (:terminals g) end-marker))
-        state      (fn [items] (state-by-items ccc items))
-        items      (fn [state] (items-by-state ccc state))
         decode     (partial decode-lr-item g)
         end?       (partial end-position-lr-item? g)
         act-shift  (fn [state] (assoc action-shift :state state))
@@ -549,7 +550,7 @@
                              (if (follow? a nt)
                                (act-reduce (dissoc it :pos)))))
                          (if (= (decode it) a)
-                           (act-shift (state (goto its a)))))]
+                           (act-shift (items->state (goto its a)))))]
               (if act'
                 (if (or (nil? act) (= act' act))
                   act'
@@ -559,7 +560,7 @@
                         a0 act
                         a1 act')
                       (reduced (println "Inconsistency:" act' "with" act
-                                        "at" "[" (state its) "," a  "]")))))
+                                        "at" "[" (items->state its) "," a  "]")))))
                 act))))
 
         for-states
@@ -572,12 +573,11 @@
                 (recur
                  (assoc row t (reduce (for-items its t) nil (seq its)))
                  (rest ts))))))]
-    (reduce for-states [] (:by-x ccc))))
+    (reduce for-states [] (keys items->state))))
 
 ;;expect augmented grammar
-(defn slr-goto-tab [g ccc]
+(defn slr-goto-tab [g items->state]
   (let [nterms (keys (:productions g))
-        state  (fn [items] (state-by-items ccc items))
         goto   (fn [its s] (lr-goto its s g))
 
         for-states
@@ -588,25 +588,23 @@
               (conj tab row)
               (recur
                (let [nt (first nts)]
-                 (assoc row nt (state (goto its nt))))
+                 (assoc row nt (items->state (goto its nt))))
                (rest nts)))))]
-    (reduce for-states [] (:by-x ccc))))
+    (reduce for-states [] (keys items->state))))
 
 (defn slr-parser [g]
   (let [g   (augment-grammar g)
-        ccc (consolidate-cc (canonical-coll g))
+
+        {:keys [state->items items->state]}
+        (indexed-canonical-coll (canonical-coll g))
 
         init ;the initial state
-        (let [it {:left aug-start :nth 0 :pos 0}
-              v (:by-x ccc) n (count v)]
-          (loop [i 0]
-            (if (= i n)
-              (println "cannot find initial state from canonical collection")
-              (if (contains? (v i) it)
-                i (recur (inc i))))))
+        (when-let [items (first (filter #(contains? % lr-item)
+                                        (keys items->state)))]
+          (items->state items))
 
-        action-tab (slr-action-tab g ccc false)
-        goto-tab (slr-goto-tab g ccc)
+        action-tab (slr-action-tab g items->state false)
+        goto-tab (slr-goto-tab g items->state)
 
         atab-helper
         (fn [state term f]
@@ -632,9 +630,8 @@
                        (inc i))))))
 
         default-trans
-        (fn [p cv] (conj [(:left p)] cv))
-        ]
-    (println "Initial state:" init ", i.e." (items-by-state ccc init))
+        (fn [p cv] (conj [(:left p)] cv))]
+    (println "Initial state:" init ", i.e." (state->items init))
     (fn parse
       ([token-v] (parse token-v default-trans))
       ([token-v trans-fn]
