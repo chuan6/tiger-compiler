@@ -542,34 +542,40 @@
                      (fn [a left] (contains? (get flwset left) a)))
         goto       (fn [its s] (lr-goto its s g))
 
-        for-items
-        (fn [its a] ;given items of the current state and a terminal
-          ;;note: continue reduction after an action has been found,
-          ;;in order to check existence of any action conflictions
-          (fn [act it]
-            (let [act' (if (end? it)
-                         (let [nt (:left it)]
-                           (if (and (= nt aug-start) (= a end-marker))
-                             act-accept
-                             (if (follow? a nt)
-                               (act-reduce (dissoc it :pos)))))
-                         (if (= (decode it) a)
-                           (act-shift (items->state (goto its a)))))]
-              (if act'
-                (if (or (nil? act) (= act' act))
-                  act'
-                  (let [a0 (:action act) a1 (:action act')]
-                    (if (and (not (= a0 a1)) prefer-shift?)
-                      (condp = :shift
-                        a0 act
-                        a1 act')
-                      (reduced (println "Inconsistency:" act' "with" act
-                                        "at" "[" (items->state its) "," a  "]")))))
-                act))))]
+        action
+        (fn [items t item]
+          (cond
+            (and (end? item) (= (:left item) aug-start) (= t end-marker))
+            act-accept
+
+            (and (end? item) (follow? t (:left item)))
+            (act-reduce (dissoc item :pos))
+
+            (= (decode item) t)
+            (act-shift (items->state (goto items t)))))
+
+        find-action
+        (fn [items t]
+          (let [acts (-> (map (partial action items t) items)
+                         set
+                         (disj nil))
+                shift-acts (filter #(= (:action %) :shift) acts)]
+            (cond
+              (empty? acts)
+              nil
+
+              (= (count acts) 1)
+              (first acts)
+
+              (and prefer-shift? (= (count shift-acts) 1))
+              (first shift-acts)
+
+              :else
+              (println "Unresolvable inconsistency found within actions:"
+                       acts "at [" (items->state items) "," t "]."))))]
     (reduce
      (fn [state->action [items state t]]
-       (assoc-in state->action [state t]
-                 (reduce (for-items items t) nil (seq items))))
+       (assoc-in state->action [state t] (find-action items t)))
      {} (for [[k v] items->state t terms] [k v t]))))
 
 (tt/comprehend-tests
