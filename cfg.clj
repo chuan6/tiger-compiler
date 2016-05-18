@@ -565,35 +565,101 @@
                         a1 act')
                       (reduced (println "Inconsistency:" act' "with" act
                                         "at" "[" (items->state its) "," a  "]")))))
-                act))))
-
-        for-states
-        (fn [tab its]
-          (assert (vector? tab))
-          (loop [row {} ts terms]
-            (if (empty? ts)
-              (conj tab row)
-              (let [t (first ts)]
-                (recur
-                 (assoc row t (reduce (for-items its t) nil (seq its)))
-                 (rest ts))))))]
-    (reduce for-states [] (keys items->state))))
+                act))))]
+    (reduce
+     (fn [state->action [items state t]]
+       (assoc-in state->action [state t]
+                 (reduce (for-items items t) nil (seq items))))
+     {} (for [[k v] items->state t terms] [k v t]))))
 
 (tt/comprehend-tests
  (t/is
-  (=
-   [{:close-paren nil, :times nil, :$ nil, :open-paren {:action :shift, :state 10}, :id {:action :shift, :state 7}, :plus nil}
-    {:close-paren {:action :reduce, :production {:left :e, :nth 1}}, :times {:action :shift, :state 5}, :$ {:action :reduce, :production {:left :e, :nth 1}}, :open-paren nil, :id nil, :plus {:action :reduce, :production {:left :e, :nth 1}}}
-    {:close-paren {:action :reduce, :production {:left :f, :nth 0}}, :times {:action :reduce, :production {:left :f, :nth 0}}, :$ {:action :reduce, :production {:left :f, :nth 0}}, :open-paren nil, :id nil, :plus {:action :reduce, :production {:left :f, :nth 0}}}
-    {:close-paren {:action :reduce, :production {:left :e, :nth 0}}, :times {:action :shift, :state 5}, :$ {:action :reduce, :production {:left :e, :nth 0}}, :open-paren nil, :id nil, :plus {:action :reduce, :production {:left :e, :nth 0}}}
-    {:close-paren {:action :reduce, :production {:left :t, :nth 1}}, :times {:action :reduce, :production {:left :t, :nth 1}}, :$ {:action :reduce, :production {:left :t, :nth 1}}, :open-paren nil, :id nil, :plus {:action :reduce, :production {:left :t, :nth 1}}}
-    {:close-paren nil, :times nil, :$ nil, :open-paren {:action :shift, :state 10}, :id {:action :shift, :state 7}, :plus nil}
-    {:close-paren {:action :shift, :state 2}, :times nil, :$ nil, :open-paren nil, :id nil, :plus {:action :shift, :state 0}}
-    {:close-paren {:action :reduce, :production {:left :f, :nth 1}}, :times {:action :reduce, :production {:left :f, :nth 1}}, :$ {:action :reduce, :production {:left :f, :nth 1}}, :open-paren nil, :id nil, :plus {:action :reduce, :production {:left :f, :nth 1}}}
-    {:close-paren nil, :times nil, :$ nil, :open-paren {:action :shift, :state 10}, :id {:action :shift, :state 7}, :plus nil}
-    {:close-paren {:action :reduce, :production {:left :t, :nth 0}}, :times {:action :reduce, :production {:left :t, :nth 0}}, :$ {:action :reduce, :production {:left :t, :nth 0}}, :open-paren nil, :id nil, :plus {:action :reduce, :production {:left :t, :nth 0}}}
-    {:close-paren nil, :times nil, :$ nil, :open-paren {:action :shift, :state 10}, :id {:action :shift, :state 7}, :plus nil}
-    {:close-paren nil, :times nil, :$ {:action :accept}, :open-paren nil, :id nil, :plus {:action :shift, :state 0}}]
+  (= {0
+      {:close-paren nil,
+       :times nil,
+       :$ nil,
+       :open-paren {:action :shift, :state 10},
+       :id {:action :shift, :state 7},
+       :plus nil},
+      1
+      {:close-paren {:action :reduce, :production {:left :e, :nth 1}},
+       :times {:action :shift, :state 5},
+       :$ {:action :reduce, :production {:left :e, :nth 1}},
+       :open-paren nil,
+       :id nil,
+       :plus {:action :reduce, :production {:left :e, :nth 1}}},
+      2
+      {:close-paren {:action :reduce, :production {:left :f, :nth 0}},
+       :times {:action :reduce, :production {:left :f, :nth 0}},
+       :$ {:action :reduce, :production {:left :f, :nth 0}},
+       :open-paren nil,
+       :id nil,
+       :plus {:action :reduce, :production {:left :f, :nth 0}}},
+      3
+      {:close-paren {:action :reduce, :production {:left :e, :nth 0}},
+       :times {:action :shift, :state 5},
+       :$ {:action :reduce, :production {:left :e, :nth 0}},
+       :open-paren nil,
+       :id nil,
+       :plus {:action :reduce, :production {:left :e, :nth 0}}},
+      4
+      {:close-paren {:action :reduce, :production {:left :t, :nth 1}},
+       :times {:action :reduce, :production
+               {:left :t, :nth 1}},
+       :$ {:action :reduce, :production {:left :t, :nth 1}},
+       :open-paren nil,
+       :id nil,
+       :plus {:action :reduce, :production {:left :t, :nth 1}}},
+      5
+      {:close-paren nil,
+       :times nil,
+       :$ nil,
+       :open-paren {:action :shift, :state 10},
+       :id {:action :shift, :state 7},
+       :plus nil},
+      6
+      {:close-paren {:action :shift, :state 2},
+       :times nil,
+       :$ nil,
+       :open-paren nil,
+       :id nil,
+       :plus {:action :shift, :state 0}},
+      7
+      {:close-paren {:action :reduce, :production {:left :f, :nth 1}},
+       :times {:action :reduce, :production {:left :f, :nth 1}},
+       :$ {:action :reduce, :production {:left :f, :nth 1}},
+       :open-paren nil,
+       :id nil,
+       :plus {:action :reduce, :production {:left :f, :nth 1}}},
+      8
+      {:close-paren nil,
+       :times nil,
+       :$ nil,
+       :open-paren {:action :shift, :state 10},
+       :id {:action :shift, :state 7},
+       :plus nil},
+      9
+      {:close-paren {:action :reduce, :production {:left :t, :nth 0}},
+       :times {:action :reduce, :production {:left :t, :nth 0}},
+       :$ {:action :reduce, :production {:left
+                                         :t, :nth 0}},
+       :open-paren nil,
+       :id nil,
+       :plus {:action :reduce, :production {:left :t, :nth 0}}},
+      10
+      {:close-paren nil,
+       :times nil,
+       :$ nil,
+       :open-paren {:action :shift, :state 10},
+       :id {:action :shift, :state 7},
+       :plus nil},
+      11
+      {:close-paren nil,
+       :times nil,
+       :$ {:action :accept},
+       :open-paren nil,
+       :id nil,
+       :plus {:action :shift, :state 0}}}
    (let [ag (augment-grammar test-grammar)
          items->state (:items->state (indexed-canonical-coll (canonical-coll ag)))]
      (slr-action-tab ag items->state false)))))
