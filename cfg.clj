@@ -532,51 +532,50 @@
 ;;expect augmented grammar
 (defn slr-action-tab [g items->state prefer-shift?]
   (let [terms      (seq (conj (:terminals g) end-marker))
+        flwset     (follow-set g)
         decode     (partial decode-lr-item g)
-        end?       (partial end-position-lr-item? g)
-        act-shift  (fn [state] (assoc action-shift :state state))
-        act-reduce (fn [production] (assoc action-reduce :production production))
-        act-accept action-accept
-        act-error  action-error
-        follow?    (let [flwset (follow-set g)]
-                     (fn [a left] (contains? (get flwset left) a)))
-        goto       (fn [its s] (lr-goto its s g))
+        end?       (partial end-position-lr-item? g)]
+    (letfn [(act-shift [state] (assoc action-shift :state state))
 
-        action
-        (fn [items t item]
-          (cond
-            (and (end? item) (= (:left item) aug-start) (= t end-marker))
-            act-accept
+            (act-reduce [production] (assoc action-reduce :production production))
 
-            (and (end? item) (follow? t (:left item)))
-            (act-reduce (dissoc item :pos))
+            (follow? [a left] (contains? (flwset left) a))
 
-            (= (decode item) t)
-            (act-shift (items->state (goto items t)))))
+            (goto [its s] (lr-goto its s g))
 
-        find-action
-        (fn [items t]
-          (let [acts (-> (map (partial action items t) items)
-                         set
-                         (disj nil))
-                shift-acts (filter #(= (:action %) :shift) acts)]
-            (cond
-              (empty? acts)
-              nil
+            (action [items t item]
+              (cond
+                (and (end? item) (= (:left item) aug-start) (= t end-marker))
+                action-accept
 
-              (= (count acts) 1)
-              (first acts)
+                (and (end? item) (follow? t (:left item)))
+                (act-reduce (dissoc item :pos))
 
-              (and prefer-shift? (= (count shift-acts) 1))
-              (first shift-acts)
+                (= (decode item) t)
+                (act-shift (items->state (goto items t)))))
 
-              :else
-              (println "Unresolvable inconsistency found within actions:"
-                       acts "at [" (items->state items) "," t "]."))))]
-    (reduce
-     (fn [state->action [items state t]]
-       (assoc-in state->action [state t] (find-action items t)))
-     {} (for [[k v] items->state t terms] [k v t]))))
+            (find-action [items t]
+              (let [acts (-> (map (partial action items t) items)
+                             set
+                             (disj nil))
+                    shift-acts (filter #(= (:action %) :shift) acts)]
+                (cond
+                  (empty? acts)
+                  nil
+
+                  (= (count acts) 1)
+                  (first acts)
+
+                  (and prefer-shift? (= (count shift-acts) 1))
+                  (first shift-acts)
+
+                  :else
+                  (println "Unresolvable inconsistency found within actions:"
+                           acts "at [" (items->state items) "," t "]."))))]
+      (reduce
+       (fn [state->action [items state t]]
+         (assoc-in state->action [state t] (find-action items t)))
+       {} (for [[k v] items->state t terms] [k v t])))))
 
 (tt/comprehend-tests
  (t/is
