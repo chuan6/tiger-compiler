@@ -1,5 +1,6 @@
 (ns cfg
-  (:require [clojure.set :as set]
+  (:require [clojure.data]
+            [clojure.set :as set]
             [clojure.test :as t]
             [grammar :as tg]
             [tigerc.test :as tt]))
@@ -502,11 +503,6 @@
             (into coll (filter seq (generate-states coll))))]
     (fixpoint update-coll #{(lr-closure #{lr-item} g)})))
 
-(def action-shift {:action :shift :state 0})
-(def action-reduce {:action :reduce :production nil})
-(def action-accept {:action :accept})
-(def action-error {:action :error})
-
 (defn indexed-canonical-coll
   "produce two mappings: state->items and items->state, that are consistent,
   meaning,
@@ -529,145 +525,150 @@
     {:state->items (into {} (map-indexed vector cc-seq))
      :items->state (into {} (map-indexed swap-pair cc-seq))}))
 
+(def action-shift {:action :shift :state 0})
+(def action-reduce {:action :reduce :production nil})
+(def action-accept {:action :accept})
+(def action-error {:action :error})
+
+(defn- slr-action [g {:keys [items->state state->items]}]
+  (let [flwset
+        (follow-set g)
+
+        action-on-item
+        (fn [items t {nt :left x :nth :as item}]
+          (cond (= (decode-lr-item g item) t)
+                {:action :shift :state (items->state (lr-goto items t g))}
+
+                (end-position-lr-item? g item)
+                (cond (and (= nt aug-start) (= t end-marker))
+                      {:action :accept}
+
+                      (contains? (flwset nt) t)
+                      {:action :reduce :production {:left nt :nth x}})))]
+    (fn [state t prefer-shift?]
+      (let [items (state->items state)
+            f (partial action-on-item items t)
+            actions (-> (map f items) set (disj nil))
+            shift-actions (set/select #(= (:action %) :shift) actions)]
+        (cond (empty? actions)
+              nil
+
+              (= (count actions) 1)
+              (first actions)
+
+              (and prefer-shift? (= (count shift-actions) 1))
+              (first shift-actions)
+
+              :else
+              (println "Unresolvable inconsistency found within actions:"
+                       actions "at [" state "," t "]."))))))
+
 ;;expect augmented grammar
-(defn slr-action-tab [g items->state prefer-shift?]
-  (let [terms      (seq (conj (:terminals g) end-marker))
-        flwset     (follow-set g)
-        decode     (partial decode-lr-item g)
-        end?       (partial end-position-lr-item? g)]
-    (letfn [(act-shift [state] (assoc action-shift :state state))
-
-            (act-reduce [production] (assoc action-reduce :production production))
-
-            (follow? [a left] (contains? (flwset left) a))
-
-            (goto [its s] (lr-goto its s g))
-
-            (action [items t item]
-              (cond
-                (and (end? item) (= (:left item) aug-start) (= t end-marker))
-                action-accept
-
-                (and (end? item) (follow? t (:left item)))
-                (act-reduce (dissoc item :pos))
-
-                (= (decode item) t)
-                (act-shift (items->state (goto items t)))))
-
-            (find-action [items t]
-              (let [acts (-> (map (partial action items t) items)
-                             set
-                             (disj nil))
-                    shift-acts (filter #(= (:action %) :shift) acts)]
-                (cond
-                  (empty? acts)
-                  nil
-
-                  (= (count acts) 1)
-                  (first acts)
-
-                  (and prefer-shift? (= (count shift-acts) 1))
-                  (first shift-acts)
-
-                  :else
-                  (println "Unresolvable inconsistency found within actions:"
-                           acts "at [" (items->state items) "," t "]."))))]
-      (reduce
-       (fn [state->action [items state t]]
-         (assoc-in state->action [state t] (find-action items t)))
-       {} (for [[k v] items->state t terms] [k v t])))))
+(defn slr-action-tab [g state-items-mappings prefer-shift?]
+  (let [action-fn (slr-action g state-items-mappings)
+        tab-cells (for [state (keys (:state->items state-items-mappings))
+                        t (seq (conj (:terminals g) end-marker))]
+                    [state t])]
+    (reduce
+     (fn [ret [state t]]
+       (assoc-in ret [state t] (action-fn state t prefer-shift?)))
+     {} tab-cells)))
 
 (tt/comprehend-tests
- (t/is
-  (= {0
-      {:close-paren nil,
-       :times nil,
-       :$ nil,
-       :open-paren {:action :shift, :state 10},
-       :id {:action :shift, :state 7},
-       :plus nil},
-      1
-      {:close-paren {:action :reduce, :production {:left :e, :nth 1}},
-       :times {:action :shift, :state 5},
-       :$ {:action :reduce, :production {:left :e, :nth 1}},
-       :open-paren nil,
-       :id nil,
-       :plus {:action :reduce, :production {:left :e, :nth 1}}},
-      2
-      {:close-paren {:action :reduce, :production {:left :f, :nth 0}},
-       :times {:action :reduce, :production {:left :f, :nth 0}},
-       :$ {:action :reduce, :production {:left :f, :nth 0}},
-       :open-paren nil,
-       :id nil,
-       :plus {:action :reduce, :production {:left :f, :nth 0}}},
-      3
-      {:close-paren {:action :reduce, :production {:left :e, :nth 0}},
-       :times {:action :shift, :state 5},
-       :$ {:action :reduce, :production {:left :e, :nth 0}},
-       :open-paren nil,
-       :id nil,
-       :plus {:action :reduce, :production {:left :e, :nth 0}}},
-      4
-      {:close-paren {:action :reduce, :production {:left :t, :nth 1}},
-       :times {:action :reduce, :production
-               {:left :t, :nth 1}},
-       :$ {:action :reduce, :production {:left :t, :nth 1}},
-       :open-paren nil,
-       :id nil,
-       :plus {:action :reduce, :production {:left :t, :nth 1}}},
-      5
-      {:close-paren nil,
-       :times nil,
-       :$ nil,
-       :open-paren {:action :shift, :state 10},
-       :id {:action :shift, :state 7},
-       :plus nil},
-      6
-      {:close-paren {:action :shift, :state 2},
-       :times nil,
-       :$ nil,
-       :open-paren nil,
-       :id nil,
-       :plus {:action :shift, :state 0}},
-      7
-      {:close-paren {:action :reduce, :production {:left :f, :nth 1}},
-       :times {:action :reduce, :production {:left :f, :nth 1}},
-       :$ {:action :reduce, :production {:left :f, :nth 1}},
-       :open-paren nil,
-       :id nil,
-       :plus {:action :reduce, :production {:left :f, :nth 1}}},
-      8
-      {:close-paren nil,
-       :times nil,
-       :$ nil,
-       :open-paren {:action :shift, :state 10},
-       :id {:action :shift, :state 7},
-       :plus nil},
-      9
-      {:close-paren {:action :reduce, :production {:left :t, :nth 0}},
-       :times {:action :reduce, :production {:left :t, :nth 0}},
-       :$ {:action :reduce, :production {:left
-                                         :t, :nth 0}},
-       :open-paren nil,
-       :id nil,
-       :plus {:action :reduce, :production {:left :t, :nth 0}}},
-      10
-      {:close-paren nil,
-       :times nil,
-       :$ nil,
-       :open-paren {:action :shift, :state 10},
-       :id {:action :shift, :state 7},
-       :plus nil},
-      11
-      {:close-paren nil,
-       :times nil,
-       :$ {:action :accept},
-       :open-paren nil,
-       :id nil,
-       :plus {:action :shift, :state 0}}}
-   (let [ag (augment-grammar test-grammar)
-         items->state (:items->state (indexed-canonical-coll (canonical-coll ag)))]
-     (slr-action-tab ag items->state false)))))
+ (let [[only-in-expected-value
+        only-in-actual-value]
+       (clojure.data/diff
+        {0
+         {:close-paren nil,
+          :times nil,
+          :$ nil,
+          :open-paren {:action :shift, :state 10},
+          :id {:action :shift, :state 7},
+          :plus nil},
+         1
+         {:close-paren {:action :reduce, :production {:left :e, :nth 1}},
+          :times {:action :shift, :state 5},
+          :$ {:action :reduce, :production {:left :e, :nth 1}},
+          :open-paren nil,
+          :id nil,
+          :plus {:action :reduce, :production {:left :e, :nth 1}}},
+         2
+         {:close-paren {:action :reduce, :production {:left :f, :nth 0}},
+          :times {:action :reduce, :production {:left :f, :nth 0}},
+          :$ {:action :reduce, :production {:left :f, :nth 0}},
+          :open-paren nil,
+          :id nil,
+          :plus {:action :reduce, :production {:left :f, :nth 0}}},
+         3
+         {:close-paren {:action :reduce, :production {:left :e, :nth 0}},
+          :times {:action :shift, :state 5},
+          :$ {:action :reduce, :production {:left :e, :nth 0}},
+          :open-paren nil,
+          :id nil,
+          :plus {:action :reduce, :production {:left :e, :nth 0}}},
+         4
+         {:close-paren {:action :reduce, :production {:left :t, :nth 1}},
+          :times {:action :reduce, :production
+                  {:left :t, :nth 1}},
+          :$ {:action :reduce, :production {:left :t, :nth 1}},
+          :open-paren nil,
+          :id nil,
+          :plus {:action :reduce, :production {:left :t, :nth 1}}},
+         5
+         {:close-paren nil,
+          :times nil,
+          :$ nil,
+          :open-paren {:action :shift, :state 10},
+          :id {:action :shift, :state 7},
+          :plus nil},
+         6
+         {:close-paren {:action :shift, :state 2},
+          :times nil,
+          :$ nil,
+          :open-paren nil,
+          :id nil,
+          :plus {:action :shift, :state 0}},
+         7
+         {:close-paren {:action :reduce, :production {:left :f, :nth 1}},
+          :times {:action :reduce, :production {:left :f, :nth 1}},
+          :$ {:action :reduce, :production {:left :f, :nth 1}},
+          :open-paren nil,
+          :id nil,
+          :plus {:action :reduce, :production {:left :f, :nth 1}}},
+         8
+         {:close-paren nil,
+          :times nil,
+          :$ nil,
+          :open-paren {:action :shift, :state 10},
+          :id {:action :shift, :state 7},
+          :plus nil},
+         9
+         {:close-paren {:action :reduce, :production {:left :t, :nth 0}},
+          :times {:action :reduce, :production {:left :t, :nth 0}},
+          :$ {:action :reduce, :production {:left
+                                            :t, :nth 0}},
+          :open-paren nil,
+          :id nil,
+          :plus {:action :reduce, :production {:left :t, :nth 0}}},
+         10
+         {:close-paren nil,
+          :times nil,
+          :$ nil,
+          :open-paren {:action :shift, :state 10},
+          :id {:action :shift, :state 7},
+          :plus nil},
+         11
+         {:close-paren nil,
+          :times nil,
+          :$ {:action :accept},
+          :open-paren nil,
+          :id nil,
+          :plus {:action :shift, :state 0}}}
+        (let [ag (augment-grammar test-grammar)
+              state-items (indexed-canonical-coll (canonical-coll ag))]
+          (slr-action-tab ag state-items false)))]
+   (t/is (and (nil? only-in-expected-value)
+              (nil? only-in-actual-value)))))
 
 ;;expect augmented grammar
 (defn slr-goto-tab [g items->state]
@@ -689,7 +690,7 @@
 (defn slr-parser [g]
   (let [g   (augment-grammar g)
 
-        {:keys [state->items items->state]}
+        {:keys [state->items items->state] :as state-items}
         (indexed-canonical-coll (canonical-coll g))
 
         init ;the initial state
@@ -697,7 +698,7 @@
                                         (keys items->state)))]
           (items->state items))
 
-        action-tab (slr-action-tab g items->state false)
+        action-tab (slr-action-tab g state-items false)
         goto-tab (slr-goto-tab g items->state)
 
         atab-helper
