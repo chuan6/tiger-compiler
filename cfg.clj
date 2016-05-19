@@ -460,14 +460,14 @@
           (t/is (= (lr-closure #{(forward-lr-item g item)} g) ret))])
        (for [item items-at-the-end-position]
          (for [sym (list-grammar-symbols g)
-               :let [ret (lr-goto #{item} sym g)]]
+               :let [ret (lr-goto g #{item} sym)]]
            [(t/is (= (lr-closure ret g) ret))
             (t/is (= #{} ret))]))
        (t/is (= #{{:left :e, :nth 0, :pos 1}
                   {:left :f, :nth 0, :pos 2}}
-                (lr-goto #{{:left :e :nth 0 :pos 0}
-                           {:left :f :nth 0 :pos 1}} :e g)))))}
-  [lr-itemset x g]
+                (lr-goto g #{{:left :e :nth 0 :pos 0}
+                             {:left :f :nth 0 :pos 1}} :e)))))}
+  [g lr-itemset x]
   (assert (or (terminal? g x) (nonterminal? g x)))
   (assert (every? (partial valid-lr-item? g) lr-itemset))
   (let [new-kernel-items
@@ -487,7 +487,7 @@
 
           valid-result?
           (fn [g coll]
-            (->> (contains? coll (lr-goto state sym g))
+            (->> (contains? coll (lr-goto g state sym))
                  (for [sym (symbols-in-lr-itemset g state)])
                  (for [state coll])))]
       (tt/comprehend-tests
@@ -495,7 +495,7 @@
          (t/is (valid-result? g (canonical-coll g))))))}
   [g]
   (letfn [(generate-states [coll]
-            (->> (lr-goto state sym g)
+            (->> (lr-goto g state sym)
                  (for [sym (symbols-in-lr-itemset g state)])
                  (for [state coll])
                  flatten))
@@ -531,19 +531,22 @@
 (def action-accept {:action :accept})
 (def action-error {:action :error})
 
-(defn- slr-action [g {:keys [items->state state->items]}]
-  (let [flwset (follow-set g)
+(declare grammar-object)
+
+(defn- slr-action [{:keys [decode-item end-position-item? goto follow-set
+                           state-items-mappings]}]
+  (let [{:keys [state->items items->state]} @state-items-mappings
 
         action-on-item
         (fn [items t {nt :left x :nth :as item}]
-          (cond (= (decode-lr-item g item) t)
-                {:action :shift :state (items->state (lr-goto items t g))}
+          (cond (= (@decode-item item) t)
+                {:action :shift :state (items->state (@goto items t))}
 
-                (end-position-lr-item? g item)
+                (@end-position-item? item)
                 (cond (and (= nt aug-start) (= t end-marker))
                       {:action :accept}
 
-                      (contains? (flwset nt) t)
+                      (contains? (@follow-set nt) t)
                       {:action :reduce :production {:left nt :nth x}})))]
     (fn [state t prefer-shift?]
       (let [items         (state->items state)
@@ -563,11 +566,20 @@
               (println "Unresolvable inconsistency found within actions:"
                        actions "at [" state "," t "]."))))))
 
+(defn grammar-object [g]
+  {:grammar (delay g)
+   :state-items-mappings (delay (indexed-canonical-coll (canonical-coll g)))
+   :follow-set (delay (follow-set g))
+   :goto (delay (partial lr-goto g))
+   :decode-item (delay (partial decode-lr-item g))
+   :end-position-item? (delay (partial end-position-lr-item? g))})
+
 ;;expect augmented grammar
-(defn slr-action-tab [g state-items-mappings prefer-shift?]
-  (let [action-fn (slr-action g state-items-mappings)
-        tab-cells (for [state (keys (:state->items state-items-mappings))
-                        t (seq (conj (:terminals g) end-marker))]
+(defn slr-action-tab [{:keys [state-items-mappings grammar] :as gobj}
+                      prefer-shift?]
+  (let [action-fn (slr-action gobj)
+        tab-cells (for [state (keys (:state->items @state-items-mappings))
+                        t (seq (conj (:terminals @grammar) end-marker))]
                     [state t])]
     (reduce
      (fn [ret [state t]]
@@ -645,8 +657,7 @@
          9
          {:close-paren {:action :reduce, :production {:left :t, :nth 0}},
           :times {:action :reduce, :production {:left :t, :nth 0}},
-          :$ {:action :reduce, :production {:left
-                                            :t, :nth 0}},
+          :$ {:action :reduce, :production {:left :t, :nth 0}},
           :open-paren nil,
           :id nil,
           :plus {:action :reduce, :production {:left :t, :nth 0}}},
@@ -665,15 +676,15 @@
           :id nil,
           :plus {:action :shift, :state 0}}}
         (let [ag (augment-grammar test-grammar)
-              state-items (indexed-canonical-coll (canonical-coll ag))]
-          (slr-action-tab ag state-items false)))]
+              gobj (grammar-object ag)]
+          (slr-action-tab gobj false)))]
    (t/is (and (nil? only-in-expected-value)
               (nil? only-in-actual-value)))))
 
 ;;expect augmented grammar
 (defn slr-goto-tab [g items->state]
   (let [nterms (keys (:productions g))
-        goto   (fn [its s] (lr-goto its s g))
+        goto   (fn [its s] (lr-goto g its s))
 
         for-states
         (fn [tab its]
@@ -698,7 +709,8 @@
                                         (keys items->state)))]
           (items->state items))
 
-        action (memoize (slr-action g state-items))
+        g-object (grammar-object g)
+        action (memoize (slr-action g-object))
         goto-tab (slr-goto-tab g items->state)]
     (letfn [(atab [state term] ;get an entry from action table
               (if-let [act (action state term false)]
