@@ -540,49 +540,48 @@
      :decode-item (delay (partial decode-lr-item g))
      :end-position-item? (delay (partial end-position-lr-item? g))}))
 
-(defn- slr-action [{:keys [decode-item end-position-item? goto follow-set
-                           state-items-mappings]}]
+
+(defn- slr-action [{:keys [goto decode-item end-position-item? follow-set
+                           state-items-mappings]}
+                   state t prefer-shift?]
   (let [{:keys [state->items items->state]} @state-items-mappings
+        items         (state->items state)
+        item-action   (fn [{nt :left x :nth :as item}]
+                        (cond
+                          (= (@decode-item item) t)
+                          {:action :shift :state (items->state (@goto items t))}
 
-        action-on-item
-        (fn [items t {nt :left x :nth :as item}]
-          (cond (= (@decode-item item) t)
-                {:action :shift :state (items->state (@goto items t))}
+                          (@end-position-item? item)
+                          (cond
+                            (and (= nt aug-start) (= t end-marker))
+                            {:action :accept}
 
-                (@end-position-item? item)
-                (cond (and (= nt aug-start) (= t end-marker))
-                      {:action :accept}
+                            (contains? (@follow-set nt) t)
+                            {:action :reduce :production {:left nt :nth x}})))
+        actions       (-> (map item-action items) set (disj nil))
+        shift-actions (set/select #(= (:action %) :shift) actions)]
+    (cond (empty? actions)
+          nil
 
-                      (contains? (@follow-set nt) t)
-                      {:action :reduce :production {:left nt :nth x}})))]
-    (fn [state t prefer-shift?]
-      (let [items         (state->items state)
-            f             (partial action-on-item items t)
-            actions       (-> (map f items) set (disj nil))
-            shift-actions (set/select #(= (:action %) :shift) actions)]
-        (cond (empty? actions)
-              nil
+          (= (count actions) 1)
+          (first actions)
 
-              (= (count actions) 1)
-              (first actions)
+          (and prefer-shift? (= (count shift-actions) 1))
+          (first shift-actions)
 
-              (and prefer-shift? (= (count shift-actions) 1))
-              (first shift-actions)
-
-              :else
-              (println "Unresolvable inconsistency found within actions:"
-                       actions "at [" state "," t "]."))))))
+          :else
+          (println "Unresolvable inconsistency found within actions:"
+                   actions "at [" state "," t "]."))))
 
 ;;expect augmented grammar
 (defn slr-action-tab [{:keys [state-items-mappings grammar] :as gobj}
                       prefer-shift?]
-  (let [action-fn (slr-action gobj)
-        tab-cells (for [state (keys (:state->items @state-items-mappings))
+  (let [tab-cells (for [state (keys (:state->items @state-items-mappings))
                         t (seq (conj (:terminals @grammar) end-marker))]
                     [state t])]
     (reduce
      (fn [ret [state t]]
-       (assoc-in ret [state t] (action-fn state t prefer-shift?)))
+       (assoc-in ret [state t] (slr-action gobj state t prefer-shift?)))
      {} tab-cells)))
 
 (tt/comprehend-tests
@@ -707,7 +706,7 @@
                                         (keys items->state)))]
           (items->state items))
 
-        action (memoize (slr-action gobj))
+        action (memoize (partial slr-action gobj))
         goto-tab (slr-goto-tab gobj)]
     (letfn [(atab [state term] ;get an entry from action table
               (if-let [act (action state term false)]
