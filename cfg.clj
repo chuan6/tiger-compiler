@@ -711,12 +711,9 @@
                    :as gobj}]
   (let [{:keys [state->items items->state]} @state-items-mappings
         productions (:productions @grammar)
-
-        init ;the initial state
-        (when-let [items (first (filter #(contains? % lr-item)
-                                        (keys items->state)))]
-          (items->state items))
-
+        init (items->state (->> (keys items->state)
+                                (filter #(contains? % lr-item))
+                                first)) ;the initial state
         action-helper (memoize (partial slr-action gobj))
         goto (memoize (partial slr-goto gobj))]
     (letfn [(action [state term]
@@ -726,14 +723,9 @@
                 (let [act' (action-helper state empty-string false)]
                   (when (and act' (= (:action act') :shift))
                     (recur (:state act') term)))))
-            (prod-len [prod] ;count non-empty-string symbols in a production
-              (let [pv (((:left prod) productions) (:nth prod))
-                    n (count pv)]
-                (loop [c 0 i 0]
-                  (if (= i n)
-                    c
-                    (recur (if (= (pv i) empty-string) c (inc c))
-                           (inc i))))))
+            (prod-len [{nt :left x :nth}] ;count non-empty-string symbols in a production
+              (let [pv (get-in productions [nt x])]
+                (count (remove #(= % empty-string) pv))))
             (default-trans [p cv]
               (conj [(:left p)] cv))]
       ;;(println "Initial state:" init ", i.e." (state->items init))
@@ -746,12 +738,14 @@
            ;;(print ss "\t")
            (if (empty? ts) ;not suppose to happen
              (do (println ss)  treev)
-             (let [t (first ts) s (peek ss)
+             (let [t (first ts)
+                   s (peek ss)
                    a (action s (:token t))]
                (case (:action a)
                  :shift
                  (do ;(println a)
-                   (recur (rest ts) (conj ss (:state a))
+                   (recur (rest ts)
+                          (conj ss (:state a))
                           (conj treev t)))
 
                  :reduce
@@ -760,9 +754,10 @@
                        nt (:left p)]
                    (recur ts
                           (let [n (count ss)
-                                ss (subvec ss 0 (- n m))]
+                                ss' (subvec ss 0 (- n m))
+                                s' (peek ss')]
                                         ;(println nt ((nt productions) (:nth p)))
-                            (conj ss (goto (peek ss) nt)))
+                            (conj ss' (goto s' nt)))
                           (let [n (count treev)
                                 i (- n m)
                                 cv (subvec treev i n)
