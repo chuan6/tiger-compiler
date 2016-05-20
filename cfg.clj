@@ -567,12 +567,13 @@
                        actions "at [" state "," t "]."))))))
 
 (defn grammar-object [g]
-  {:grammar (delay g)
-   :state-items-mappings (delay (indexed-canonical-coll (canonical-coll g)))
-   :follow-set (delay (follow-set g))
-   :goto (delay (partial lr-goto g))
-   :decode-item (delay (partial decode-lr-item g))
-   :end-position-item? (delay (partial end-position-lr-item? g))})
+  (let [g (augment-grammar g)]
+    {:grammar (delay g)
+     :state-items-mappings (delay (indexed-canonical-coll (canonical-coll g)))
+     :follow-set (delay (follow-set g))
+     :goto (delay (partial lr-goto g))
+     :decode-item (delay (partial decode-lr-item g))
+     :end-position-item? (delay (partial end-position-lr-item? g))}))
 
 ;;expect augmented grammar
 (defn slr-action-tab [{:keys [state-items-mappings grammar] :as gobj}
@@ -675,16 +676,16 @@
           :open-paren nil,
           :id nil,
           :plus {:action :shift, :state 0}}}
-        (let [ag (augment-grammar test-grammar)
-              gobj (grammar-object ag)]
+        (let [gobj (grammar-object test-grammar)]
           (slr-action-tab gobj false)))]
    (t/is (and (nil? only-in-expected-value)
               (nil? only-in-actual-value)))))
 
 ;;expect augmented grammar
-(defn slr-goto-tab [g items->state]
-  (let [nterms (keys (:productions g))
-        goto   (fn [its s] (lr-goto g its s))
+(defn slr-goto-tab [{:keys [grammar goto state-items-mappings]
+                     :as gobj}]
+  (let [nterms (keys (:productions @grammar))
+        items->state (:items->state @state-items-mappings)
 
         for-states
         (fn [tab its]
@@ -694,24 +695,22 @@
               (conj tab row)
               (recur
                (let [nt (first nts)]
-                 (assoc row nt (items->state (goto its nt))))
+                 (assoc row nt (items->state (@goto its nt))))
                (rest nts)))))]
     (reduce for-states [] (keys items->state))))
 
-(defn slr-parser [g]
-  (let [g   (augment-grammar g)
-
-        {:keys [state->items items->state] :as state-items}
-        (indexed-canonical-coll (canonical-coll g))
+(defn slr-parser [{:keys [state-items-mappings grammar]
+                   :as gobj}]
+  (let [{:keys [state->items items->state]} @state-items-mappings
+        productions (:productions @grammar)
 
         init ;the initial state
         (when-let [items (first (filter #(contains? % lr-item)
                                         (keys items->state)))]
           (items->state items))
 
-        g-object (grammar-object g)
-        action (memoize (slr-action g-object))
-        goto-tab (slr-goto-tab g items->state)]
+        action (memoize (slr-action gobj))
+        goto-tab (slr-goto-tab gobj)]
     (letfn [(atab [state term] ;get an entry from action table
               (if-let [act (action state term false)]
                 act
@@ -722,7 +721,7 @@
             (gtab [state nterm] ;get an entry from goto table
               (get (goto-tab state) nterm))
             (prod-len [prod] ;count non-empty-string symbols in a production
-              (let [pv (((:left prod) (:productions g)) (:nth prod))
+              (let [pv (((:left prod) productions) (:nth prod))
                     n (count pv)]
                 (loop [c 0 i 0]
                   (if (= i n)
@@ -756,7 +755,7 @@
                    (recur ts
                           (let [n (count ss)
                                 ss (subvec ss 0 (- n m))]
-                                        ;(println nt ((nt (:productions g)) (:nth p)))
+                                        ;(println nt ((nt productions) (:nth p)))
                             (conj ss (gtab (peek ss) nt)))
                           (let [n (count treev)
                                 i (- n m)
@@ -772,7 +771,7 @@
 
 (time
  (tt/comprehend-tests
-  (let [parse-fn (slr-parser grammar/slr)
+  (let [parse-fn (slr-parser (grammar-object grammar/slr))
         expected-parse-tree-queens
         [:expr [{:token :let} [:decl-list [[:decl-list [[:decl-list [[:decl-list [[:decl-list [[:decl-list [[:decl-list [[:decl-list [[:decl-list [[:decl [[:var-decl [{:token :var} {:token :id, :name "N"} {:token :assign} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "8"}]]]]]]]]]]]]]]]]]]]]]] [:decl [[:ty-decl [{:token :type} {:token :ty-id, :name "myint"} {:token :equal} [:ty [{:token :ty-id, :name "int"}]]]]]]]] [:decl [[:ty-decl [{:token :type} {:token :ty-id, :name "intArray"} {:token :equal} [:ty [{:token :array} {:token :of} {:token :ty-id, :name "myint"}]]]]]]]] [:decl [[:var-decl [{:token :var} {:token :id, :name "row"} {:token :assign} [:expr [{:token :ty-id, :name "intArray"} {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "N"}]]]]]]]]]]]]]]]]]] {:token :close-bracket} {:token :of} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "0"}]]]]]]]]]]]]]]]]]]]]]]]] [:decl [[:var-decl [{:token :var} {:token :id, :name "col"} {:token :assign} [:expr [{:token :ty-id, :name "intArray"} {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "N"}]]]]]]]]]]]]]]]]]] {:token :close-bracket} {:token :of} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "0"}]]]]]]]]]]]]]]]]]]]]]]]] [:decl [[:var-decl [{:token :var} {:token :id, :name "diag1"} {:token :assign} [:expr [{:token :ty-id, :name "intArray"} {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:cmp-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "N"}]]]]]]]] [:cal-0 [{:token :plus}]] [:term [[:factor [[:lvalue [{:token :id, :name "N"}]]]]]]]] [:cal-0 [{:token :minus}]] [:term [[:factor [{:token :digits, :value "1"}]]]]]]]]]]]]]]]] {:token :close-bracket} {:token :of} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "0"}]]]]]]]]]]]]]]]]]]]]]]]] [:decl [[:var-decl [{:token :var} {:token :id, :name "diag2"} {:token :assign} [:expr [{:token :ty-id, :name "intArray"} {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:cmp-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "N"}]]]]]]]] [:cal-0 [{:token :plus}]] [:term [[:factor [[:lvalue [{:token :id, :name "N"}]]]]]]]] [:cal-0 [{:token :minus}]] [:term [[:factor [{:token :digits, :value "1"}]]]]]]]]]]]]]]]] {:token :close-bracket} {:token :of} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "0"}]]]]]]]]]]]]]]]]]]]]]]]] [:decl [[:fn-decl [{:token :function} {:token :id, :name "printboard"} {:token :open-paren} {:token :close-paren} {:token :equal} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :open-paren} [:expr-seq [[:expr-seq [[:expr [{:token :for} {:token :id, :name "i"} {:token :assign} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "0"}]]]]]]]]]]]]]]]] {:token :to} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "N"}]]]]]]]] [:cal-0 [{:token :minus}]] [:term [[:factor [{:token :digits, :value "1"}]]]]]]]]]]]]]]]] {:token :do} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :open-paren} [:expr-seq [[:expr-seq [[:expr [{:token :for} {:token :id, :name "j"} {:token :assign} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "0"}]]]]]]]]]]]]]]]] {:token :to} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "N"}]]]]]]]] [:cal-0 [{:token :minus}]] [:term [[:factor [{:token :digits, :value "1"}]]]]]]]]]]]]]]]] {:token :do} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :id, :name "print"} {:token :open-paren} [:expr-list [[:expr [{:token :if} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [[:lvalue [[:lvalue [{:token :id, :name "col"}]] {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "i"}]]]]]]]]]]]]]]]]]] {:token :close-bracket}]]]]]]]] [:cmp [{:token :equal}]] [:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "j"}]]]]]]]]]]]]]]]]]] {:token :then} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [{:token :string, :value " O"}]]]]]]]]]]]] [:if-tail [{:token :else} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [{:token :string, :value " ."}]]]]]]]]]]]]]]]]]] {:token :close-paren}]]]]]]]]]]]]]]]]]]]] {:token :semi-colon} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :id, :name "print"} {:token :open-paren} [:expr-list [[:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [{:token :string, :value "\\n"}]]]]]]]]]]]]]] {:token :close-paren}]]]]]]]]]]]]]]]]]] {:token :close-paren}]]]]]]]]]]]]]]]]]]]] {:token :semi-colon} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :id, :name "print"} {:token :open-paren} [:expr-list [[:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [{:token :string, :value "\\n"}]]]]]]]]]]]]]] {:token :close-paren}]]]]]]]]]]]]]]]]]] {:token :close-paren}]]]]]]]]]]]]]]]]]]]]]] [:decl [[:fn-decl [{:token :function} {:token :id, :name "try"} {:token :open-paren} [:ty-fields [[:ty-field [{:token :id, :name "c"} {:token :colon} {:token :ty-id, :name "myint"}]]]] {:token :close-paren} {:token :equal} [:expr [{:token :if} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "c"}]]]]]]]] [:cmp [{:token :equal}]] [:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "N"}]]]]]]]]]]]]]]]]]] {:token :then} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :id, :name "printboard"} {:token :open-paren} {:token :close-paren}]]]]]]]]]]]]]]]] [:if-tail [{:token :else} [:expr [{:token :for} {:token :id, :name "r"} {:token :assign} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "0"}]]]]]]]]]]]]]]]] {:token :to} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "N"}]]]]]]]] [:cal-0 [{:token :minus}]] [:term [[:factor [{:token :digits, :value "1"}]]]]]]]]]]]]]]]] {:token :do} [:expr [{:token :if} [:expr [[:val [[:arith [[:or-term [[:or-term [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [[:lvalue [[:lvalue [{:token :id, :name "row"}]] {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "r"}]]]]]]]]]]]]]]]]]] {:token :close-bracket}]]]]]]]] [:cmp [{:token :equal}]] [:cmp-term [[:term [[:factor [{:token :digits, :value "0"}]]]]]]]]]] {:token :and} [:and-term [[:cmp-term [[:term [[:factor [[:lvalue [[:lvalue [{:token :id, :name "diag1"}]] {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "r"}]]]]]]]] [:cal-0 [{:token :plus}]] [:term [[:factor [[:lvalue [{:token :id, :name "c"}]]]]]]]]]]]]]]]]]] {:token :close-bracket}]]]]]]]] [:cmp [{:token :equal}]] [:cmp-term [[:term [[:factor [{:token :digits, :value "0"}]]]]]]]]]] {:token :and} [:and-term [[:cmp-term [[:term [[:factor [[:lvalue [[:lvalue [{:token :id, :name "diag2"}]] {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:cmp-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "r"}]]]]]]]] [:cal-0 [{:token :plus}]] [:term [[:factor [{:token :digits, :value "7"}]]]]]] [:cal-0 [{:token :minus}]] [:term [[:factor [[:lvalue [{:token :id, :name "c"}]]]]]]]]]]]]]]]]]] {:token :close-bracket}]]]]]]]] [:cmp [{:token :equal}]] [:cmp-term [[:term [[:factor [{:token :digits, :value "0"}]]]]]]]]]]]]]]]] {:token :then} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :open-paren} [:expr-seq [[:expr-seq [[:expr-seq [[:expr-seq [[:expr-seq [[:expr-seq [[:expr-seq [[:expr-seq [[:expr [[:lvalue [[:lvalue [{:token :id, :name "row"}]] {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "r"}]]]]]]]]]]]]]]]]]] {:token :close-bracket}]] {:token :assign} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "1"}]]]]]]]]]]]]]]]]]]]] {:token :semi-colon} [:expr [[:lvalue [[:lvalue [{:token :id, :name "diag1"}]] {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "r"}]]]]]]]] [:cal-0 [{:token :plus}]] [:term [[:factor [[:lvalue [{:token :id, :name "c"}]]]]]]]]]]]]]]]]]] {:token :close-bracket}]] {:token :assign} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "1"}]]]]]]]]]]]]]]]]]]]] {:token :semi-colon} [:expr [[:lvalue [[:lvalue [{:token :id, :name "diag2"}]] {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:cmp-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "r"}]]]]]]]] [:cal-0 [{:token :plus}]] [:term [[:factor [{:token :digits, :value "7"}]]]]]] [:cal-0 [{:token :minus}]] [:term [[:factor [[:lvalue [{:token :id, :name "c"}]]]]]]]]]]]]]]]]]] {:token :close-bracket}]] {:token :assign} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "1"}]]]]]]]]]]]]]]]]]]]] {:token :semi-colon} [:expr [[:lvalue [[:lvalue [{:token :id, :name "col"}]] {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "c"}]]]]]]]]]]]]]]]]]] {:token :close-bracket}]] {:token :assign} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "r"}]]]]]]]]]]]]]]]]]]]]]] {:token :semi-colon} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :id, :name "try"} {:token :open-paren} [:expr-list [[:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "c"}]]]]]]]] [:cal-0 [{:token :plus}]] [:term [[:factor [{:token :digits, :value "1"}]]]]]]]]]]]]]]]]]] {:token :close-paren}]]]]]]]]]]]]]]]]]] {:token :semi-colon} [:expr [[:lvalue [[:lvalue [{:token :id, :name "row"}]] {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "r"}]]]]]]]]]]]]]]]]]] {:token :close-bracket}]] {:token :assign} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "0"}]]]]]]]]]]]]]]]]]]]] {:token :semi-colon} [:expr [[:lvalue [[:lvalue [{:token :id, :name "diag1"}]] {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "r"}]]]]]]]] [:cal-0 [{:token :plus}]] [:term [[:factor [[:lvalue [{:token :id, :name "c"}]]]]]]]]]]]]]]]]]] {:token :close-bracket}]] {:token :assign} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "0"}]]]]]]]]]]]]]]]]]]]] {:token :semi-colon} [:expr [[:lvalue [[:lvalue [{:token :id, :name "diag2"}]] {:token :open-bracket} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:cmp-term [[:cmp-term [[:term [[:factor [[:lvalue [{:token :id, :name "r"}]]]]]]]] [:cal-0 [{:token :plus}]] [:term [[:factor [{:token :digits, :value "7"}]]]]]] [:cal-0 [{:token :minus}]] [:term [[:factor [[:lvalue [{:token :id, :name "c"}]]]]]]]]]]]]]]]]]] {:token :close-bracket}]] {:token :assign} [:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "0"}]]]]]]]]]]]]]]]]]]]] {:token :close-paren}]]]]]]]]]]]]]]]] [:if-tail []]]]]]]]]]]]]]]] {:token :in} [:expr-seq [[:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :id, :name "try"} {:token :open-paren} [:expr-list [[:expr [[:val [[:arith [[:or-term [[:and-term [[:cmp-term [[:term [[:factor [{:token :digits, :value "0"}]]]]]]]]]]]]]]]]]] {:token :close-paren}]]]]]]]]]]]]]]]]]] {:token :end}]]]
     (t/is (= expected-parse-tree-queens (parse-fn (:queens tokenizer/sample-result)))))))
