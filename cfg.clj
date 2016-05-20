@@ -673,28 +673,39 @@
           :open-paren nil,
           :id nil,
           :plus {:action :shift, :state 0}}}
-        (let [gobj (grammar-object test-grammar)]
-          (slr-action-tab gobj false)))]
+        (slr-action-tab (grammar-object test-grammar) false))]
    (t/is (and (nil? only-in-expected-value)
               (nil? only-in-actual-value)))))
 
-;;expect augmented grammar
-(defn slr-goto-tab [{:keys [grammar goto state-items-mappings]
-                     :as gobj}]
-  (let [nterms (keys (:productions @grammar))
-        items->state (:items->state @state-items-mappings)
+(defn- slr-goto [{:keys [goto state-items-mappings]}
+                 state nt]
+  (let [{:keys [state->items items->state]} @state-items-mappings
+        goto-items (@goto (state->items state) nt)]
+    (items->state goto-items)))
 
-        for-states
-        (fn [tab its]
-          (assert (vector? tab))
-          (loop [row {} nts nterms]
-            (if (empty? nts)
-              (conj tab row)
-              (recur
-               (let [nt (first nts)]
-                 (assoc row nt (items->state (@goto its nt))))
-               (rest nts)))))]
-    (reduce for-states [] (keys items->state))))
+(defn slr-goto-tab [{:keys [grammar state-items-mappings] :as gobj}]
+  (let [tab-cells (for [state (keys (:state->items @state-items-mappings))
+                        nt (keys (:productions @grammar))]
+                    [state nt])]
+    (reduce
+     (fn [ret [state nt]]
+       (assoc-in ret [state nt] (slr-goto gobj state nt)))
+     {} tab-cells)))
+
+(tt/comprehend-tests
+ (t/is (= {0 {:e nil, :t 3, :f 4, :S nil},
+           1 {:e nil, :t nil, :f nil, :S nil},
+           2 {:e nil, :t nil, :f nil, :S nil},
+           3 {:e nil, :t nil, :f nil, :S nil},
+           4 {:e nil, :t nil, :f nil, :S nil},
+           5 {:e nil, :t nil, :f 9, :S nil},
+           6 {:e nil, :t nil, :f nil, :S nil},
+           7 {:e nil, :t nil, :f nil, :S nil},
+           8 {:e 11, :t 1, :f 4, :S nil},
+           9 {:e nil, :t nil, :f nil, :S nil},
+           10 {:e 6, :t 1, :f 4, :S nil},
+           11 {:e nil, :t nil, :f nil, :S nil}}
+          (slr-goto-tab (grammar-object test-grammar)))))
 
 (defn slr-parser [{:keys [state-items-mappings grammar]
                    :as gobj}]
@@ -706,17 +717,15 @@
                                         (keys items->state)))]
           (items->state items))
 
-        action (memoize (partial slr-action gobj))
-        goto-tab (slr-goto-tab gobj)]
-    (letfn [(atab [state term] ;get an entry from action table
-              (if-let [act (action state term false)]
+        action-helper (memoize (partial slr-action gobj))
+        goto (memoize (partial slr-goto gobj))]
+    (letfn [(action [state term]
+              (if-let [act (action-helper state term false)]
                 act
                 ;;otherwise, try consuming an empty-string
-                (let [act' (action state empty-string false)]
+                (let [act' (action-helper state empty-string false)]
                   (when (and act' (= (:action act') :shift))
                     (recur (:state act') term)))))
-            (gtab [state nterm] ;get an entry from goto table
-              (get (goto-tab state) nterm))
             (prod-len [prod] ;count non-empty-string symbols in a production
               (let [pv (((:left prod) productions) (:nth prod))
                     n (count pv)]
@@ -738,7 +747,7 @@
            (if (empty? ts) ;not suppose to happen
              (do (println ss)  treev)
              (let [t (first ts) s (peek ss)
-                   a (atab s (:token t))]
+                   a (action s (:token t))]
                (case (:action a)
                  :shift
                  (do ;(println a)
@@ -753,7 +762,7 @@
                           (let [n (count ss)
                                 ss (subvec ss 0 (- n m))]
                                         ;(println nt ((nt productions) (:nth p)))
-                            (conj ss (gtab (peek ss) nt)))
+                            (conj ss (goto (peek ss) nt)))
                           (let [n (count treev)
                                 i (- n m)
                                 cv (subvec treev i n)
