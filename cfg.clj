@@ -531,7 +531,14 @@
 (def action-accept {:action :accept})
 (def action-error {:action :error})
 
-(declare grammar-object)
+(defn grammar-object [g]
+  (let [g (augment-grammar g)]
+    {:grammar (delay g)
+     :state-items-mappings (delay (indexed-canonical-coll (canonical-coll g)))
+     :follow-set (delay (follow-set g))
+     :goto (delay (partial lr-goto g))
+     :decode-item (delay (partial decode-lr-item g))
+     :end-position-item? (delay (partial end-position-lr-item? g))}))
 
 (defn- slr-action [{:keys [decode-item end-position-item? goto follow-set
                            state-items-mappings]}]
@@ -565,15 +572,6 @@
               :else
               (println "Unresolvable inconsistency found within actions:"
                        actions "at [" state "," t "]."))))))
-
-(defn grammar-object [g]
-  (let [g (augment-grammar g)]
-    {:grammar (delay g)
-     :state-items-mappings (delay (indexed-canonical-coll (canonical-coll g)))
-     :follow-set (delay (follow-set g))
-     :goto (delay (partial lr-goto g))
-     :decode-item (delay (partial decode-lr-item g))
-     :end-position-item? (delay (partial end-position-lr-item? g))}))
 
 ;;expect augmented grammar
 (defn slr-action-tab [{:keys [state-items-mappings grammar] :as gobj}
