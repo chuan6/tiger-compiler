@@ -1,4 +1,4 @@
-(ns tokenizer
+(ns tigerc.tokenizer
   (:require [clojure.data :refer [diff]]
             [clojure.string :as str]
             [clojure.test :as t]

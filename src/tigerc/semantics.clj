@@ -1,4 +1,5 @@
-(ns semantics)
+(ns tigerc.semantics
+  (:require [tigerc.type :as type]))
 
 (def init-env
   {:ty-id {'int type/int 'string type/string}

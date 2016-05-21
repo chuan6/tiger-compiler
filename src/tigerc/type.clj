@@ -1,4 +1,4 @@
-(ns type)
+(ns tigerc.type)
 
 ;;;Implements the disjoint-set forest data structure.
 

@@ -1,4 +1,4 @@
-(ns grammar)
+(ns tigerc.grammar)
 
 (def empty-string :ε)
 

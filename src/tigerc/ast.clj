@@ -1,4 +1,4 @@
-(ns ast)
+(ns tigerc.ast)
 
 (defn trans-expr [nth cv]
   (case nth
