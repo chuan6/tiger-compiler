@@ -29,7 +29,7 @@
        (t/is (= action-shift (f {:left :e :nth 0 :pos 2} :then)))
        (t/is (= action-accept (f {:left aug-start :nth 0 :pos 1} end-marker)))
        (t/is (= action-reduce (f {:left :e :nth 0 :pos 4} :then)))
-       (t/is (= action-reduce (f {:left :e :nth 0 :pos 4} :else)))))}
+       (t/is (= action-reduce (f {:left :e :nth 0 :pos 4} end-marker)))))}
   [gobj item t]
   (let [{:keys [decode-item end-position-item? follow-set]} gobj
         nt (:left item)]
@@ -43,6 +43,31 @@
                 (contains? (@follow-set nt) t)
                 action-reduce))))
 
+(defn resolve-actions
+  {:test
+   #(let [shift action-shift
+          shift' (update shift :state inc)]
+      (tt/comprehend-tests
+       (t/is (nil? (resolve-actions #{} false)))
+       (t/is (= action-accept (resolve-actions #{action-accept} false)))
+       (t/is (= shift (resolve-actions #{shift action-reduce} true)))
+       (t/is (= :unresolved (resolve-actions #{shift action-reduce} false)))
+       (t/is (= :unresolved (resolve-actions #{shift shift'} false)))
+       (t/is (= :unresolved (resolve-actions #{shift shift'} true)))))}
+  [actions prefer-shift?]
+  (let [shift-actions (delay (set/select #(= (:action %) :shift) actions))]
+    (cond (empty? actions)
+          nil
+
+          (= (count actions) 1)
+          (first actions)
+
+          (and prefer-shift? (= (count @shift-actions) 1))
+          (first @shift-actions)
+
+          :else
+          :unresolved)))
+
 (defn- slr-action [{:keys [goto state-items-mappings] :as gobj}
                    state t prefer-shift?]
   (let [{:keys [state->items items->state]} @state-items-mappings
@@ -55,19 +80,11 @@
                           :reduce (assoc r :production {:left nt :nth x})
                           nil)))
         actions (-> item-action (map items) set (disj nil))
-        shift-actions (set/select #(= (:action %) :shift) actions)]
-    (cond (empty? actions)
-          nil
-
-          (= (count actions) 1)
-          (first actions)
-
-          (and prefer-shift? (= (count shift-actions) 1))
-          (first shift-actions)
-
-          :else
-          (println "Unresolvable inconsistency found within actions:"
-                   actions "at [" state "," t "]."))))
+        action (resolve-actions actions prefer-shift?)]
+    (if (= action :unresolved)
+      (println "Unresolvable inconsistency found within actions:"
+               actions "at [" state "," t "].")
+      action)))
 
 ;;expect augmented grammar
 (defn slr-action-tab [{:keys [state-items-mappings grammar] :as gobj}
