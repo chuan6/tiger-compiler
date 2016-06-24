@@ -19,25 +19,42 @@
      :decode-item (delay (partial decode-lr-item g))
      :end-position-item? (delay (partial end-position-lr-item? g))}))
 
+(defn item-action-type
+  {:test
+   #(let [f (partial item-action-type (grammar-object if-grammar))]
+      (tt/comprehend-tests
+       (t/is (nil? (f {:left :e :nth 0 :pos 0} :then)))
+       (t/is (nil? (f {:left :e :nth 0 :pos 4} :if)))
+       (t/is (= action-shift (f {:left :e :nth 0 :pos 0} :if)))
+       (t/is (= action-shift (f {:left :e :nth 0 :pos 2} :then)))
+       (t/is (= action-accept (f {:left aug-start :nth 0 :pos 1} end-marker)))
+       (t/is (= action-reduce (f {:left :e :nth 0 :pos 4} :then)))
+       (t/is (= action-reduce (f {:left :e :nth 0 :pos 4} :else)))))}
+  [gobj item t]
+  (let [{:keys [decode-item end-position-item? follow-set]} gobj
+        nt (:left item)]
+    (cond (= (@decode-item item) t)
+          action-shift
 
-(defn- slr-action [{:keys [goto decode-item end-position-item? follow-set
-                           state-items-mappings]}
+          (@end-position-item? item)
+          (cond (and (= nt aug-start) (= t end-marker))
+                action-accept
+
+                (contains? (@follow-set nt) t)
+                action-reduce))))
+
+(defn- slr-action [{:keys [goto state-items-mappings] :as gobj}
                    state t prefer-shift?]
   (let [{:keys [state->items items->state]} @state-items-mappings
-        items         (state->items state)
-        item-action   (fn [{nt :left x :nth :as item}]
-                        (cond
-                          (= (@decode-item item) t)
-                          {:action :shift :state (items->state (@goto items t))}
-
-                          (@end-position-item? item)
-                          (cond
-                            (and (= nt aug-start) (= t end-marker))
-                            {:action :accept}
-
-                            (contains? (@follow-set nt) t)
-                            {:action :reduce :production {:left nt :nth x}})))
-        actions       (-> (map item-action items) set (disj nil))
+        items (state->items state)
+        item-action (fn [{nt :left x :nth :as item}]
+                      (let [r (item-action-type gobj item t)]
+                        (case (:action r)
+                          :shift (assoc r :state (items->state (@goto items t)))
+                          :accept r
+                          :reduce (assoc r :production {:left nt :nth x})
+                          nil)))
+        actions (-> item-action (map items) set (disj nil))
         shift-actions (set/select #(= (:action %) :shift) actions)]
     (cond (empty? actions)
           nil
@@ -248,6 +265,7 @@
                      (treev 0))
 
                  (println "hit nil entry:" t "at" s "tree" treev))))))))))
+
 (time
  (tt/comprehend-tests
   (let [parse-fn (slr-parser (grammar-object tg/slr))
