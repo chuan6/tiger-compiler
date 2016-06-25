@@ -97,6 +97,86 @@
        (assoc-in ret [state t] (slr-action gobj state t prefer-shift?)))
      {} tab-cells)))
 
+(defn- slr-goto [{:keys [goto state-items-mappings]}
+                 state nt]
+  (let [{:keys [state->items items->state]} @state-items-mappings]
+    (-> state
+        state->items
+        (@goto nt)
+        items->state)))
+
+(defn slr-goto-tab [{:keys [grammar state-items-mappings] :as gobj}]
+  (let [tab-cells (for [state (keys (:state->items @state-items-mappings))
+                        nt (keys (:productions @grammar))]
+                    [state nt])]
+    (reduce
+     (fn [ret [state nt]]
+       (assoc-in ret [state nt] (slr-goto gobj state nt)))
+     {} tab-cells)))
+
+(defn slr-parser [{:keys [state-items-mappings grammar]
+                   :as gobj}]
+  (let [{:keys [state->items items->state]} @state-items-mappings
+        productions (:productions @grammar)
+        init (items->state (->> (keys items->state)
+                                (filter #(contains? % lr-item))
+                                first)) ;the initial state
+        action-helper (memoize (partial slr-action gobj))
+        goto (memoize (partial slr-goto gobj))]
+    (letfn [(action [state term]
+              (if-let [act (action-helper state term false)]
+                act
+                ;;otherwise, try consuming an empty-string
+                (let [act' (action-helper state empty-string false)]
+                  (when (and act' (= (:action act') :shift))
+                    (recur (:state act') term)))))
+            (prod-len [{nt :left x :nth}] ;count non-empty-string symbols in a production
+              (let [pv (get-in productions [nt x])]
+                (count (remove #(= % empty-string) pv))))
+            (default-trans [p cv]
+              (conj [(:left p)] cv))]
+      ;;(println "Initial state:" init ", i.e." (state->items init))
+      (fn parse
+        ([token-v] (parse token-v default-trans))
+        ([token-v trans-fn]
+         (loop [ts (seq (conj token-v {:token end-marker})) ;token queue
+                ss [init] ;state stack
+                treev []] ;parse tree stack
+           ;;(print ss "\t")
+           (if (empty? ts) ;not suppose to happen
+             (do (println ss)  treev)
+             (let [t (first ts)
+                   s (peek ss)
+                   a (action s (:token t))]
+               (case (:action a)
+                 :shift
+                 (do ;(println a)
+                   (recur (rest ts)
+                          (conj ss (:state a))
+                          (conj treev t)))
+
+                 :reduce
+                 (let [p (:production a)
+                       m (prod-len p)
+                       nt (:left p)]
+                   (recur ts
+                          (let [n (count ss)
+                                ss' (subvec ss 0 (- n m))
+                                s' (peek ss')]
+                                        ;(println nt ((nt productions) (:nth p)))
+                            (conj ss' (goto s' nt)))
+                          (let [n (count treev)
+                                i (- n m)
+                                cv (subvec treev i n)
+                                treev (subvec treev 0 i)]
+                            (conj treev (trans-fn p cv)))))
+
+                 :accept
+                 (do (println "accepted; tokens left:" ts "; stack:" ss)
+                     (treev 0))
+
+                 (println "hit nil entry:" t "at" s "tree" treev))))))))))
+
 (tt/comprehend-tests
  (let [[only-in-expected-value
         only-in-actual-value]
@@ -190,21 +270,6 @@
    (t/is (and (nil? only-in-expected-value)
               (nil? only-in-actual-value)))))
 
-(defn- slr-goto [{:keys [goto state-items-mappings]}
-                 state nt]
-  (let [{:keys [state->items items->state]} @state-items-mappings
-        goto-items (@goto (state->items state) nt)]
-    (items->state goto-items)))
-
-(defn slr-goto-tab [{:keys [grammar state-items-mappings] :as gobj}]
-  (let [tab-cells (for [state (keys (:state->items @state-items-mappings))
-                        nt (keys (:productions @grammar))]
-                    [state nt])]
-    (reduce
-     (fn [ret [state nt]]
-       (assoc-in ret [state nt] (slr-goto gobj state nt)))
-     {} tab-cells)))
-
 (tt/comprehend-tests
  (t/is (= {0 {:e nil, :t 3, :f 4, :S nil},
            1 {:e nil, :t nil, :f nil, :S nil},
@@ -219,69 +284,6 @@
            10 {:e 6, :t 1, :f 4, :S nil},
            11 {:e nil, :t nil, :f nil, :S nil}}
           (slr-goto-tab (grammar-object test-grammar)))))
-
-(defn slr-parser [{:keys [state-items-mappings grammar]
-                   :as gobj}]
-  (let [{:keys [state->items items->state]} @state-items-mappings
-        productions (:productions @grammar)
-        init (items->state (->> (keys items->state)
-                                (filter #(contains? % lr-item))
-                                first)) ;the initial state
-        action-helper (memoize (partial slr-action gobj))
-        goto (memoize (partial slr-goto gobj))]
-    (letfn [(action [state term]
-              (if-let [act (action-helper state term false)]
-                act
-                ;;otherwise, try consuming an empty-string
-                (let [act' (action-helper state empty-string false)]
-                  (when (and act' (= (:action act') :shift))
-                    (recur (:state act') term)))))
-            (prod-len [{nt :left x :nth}] ;count non-empty-string symbols in a production
-              (let [pv (get-in productions [nt x])]
-                (count (remove #(= % empty-string) pv))))
-            (default-trans [p cv]
-              (conj [(:left p)] cv))]
-      ;;(println "Initial state:" init ", i.e." (state->items init))
-      (fn parse
-        ([token-v] (parse token-v default-trans))
-        ([token-v trans-fn]
-         (loop [ts (seq (conj token-v {:token end-marker})) ;token queue
-                ss [init] ;state stack
-                treev []] ;parse tree stack
-           ;;(print ss "\t")
-           (if (empty? ts) ;not suppose to happen
-             (do (println ss)  treev)
-             (let [t (first ts)
-                   s (peek ss)
-                   a (action s (:token t))]
-               (case (:action a)
-                 :shift
-                 (do ;(println a)
-                   (recur (rest ts)
-                          (conj ss (:state a))
-                          (conj treev t)))
-
-                 :reduce
-                 (let [p (:production a)
-                       m (prod-len p)
-                       nt (:left p)]
-                   (recur ts
-                          (let [n (count ss)
-                                ss' (subvec ss 0 (- n m))
-                                s' (peek ss')]
-                                        ;(println nt ((nt productions) (:nth p)))
-                            (conj ss' (goto s' nt)))
-                          (let [n (count treev)
-                                i (- n m)
-                                cv (subvec treev i n)
-                                treev (subvec treev 0 i)]
-                            (conj treev (trans-fn p cv)))))
-
-                 :accept
-                 (do (println "accepted; tokens left:" ts "; stack:" ss)
-                     (treev 0))
-
-                 (println "hit nil entry:" t "at" s "tree" treev))))))))))
 
 (time
  (tt/comprehend-tests
