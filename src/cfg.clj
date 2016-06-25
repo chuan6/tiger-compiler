@@ -228,8 +228,7 @@
             ([curr-state] curr-state)
             ([curr-state [x & xs]]
              (assert (nonterminal? g x))
-             (if-let [x-nexts (seq (-> (first-set g xs)
-                                       (disj empty-string)))]
+             (if-let [x-nexts (seq (first-set g xs))]
                (update-in curr-state [:follow-set x] into x-nexts)
                (update curr-state :subset-rule chain-subset-rule x))))]
     (transduce (filter #(nonterminal? g (first %)))
@@ -268,7 +267,7 @@
                       :close-bracket :pipe :comma :type :geq :minus
                       :open-bracket :star :function :assign :var :diamond
                       :gt :plus :then :and :close-brace :period :equal :end
-                      :leq :lt :in :to}]
+                      :leq :lt :in :to empty-string}]
          [(t/is (empty? (set/difference (:lvalue flwset) lvalue)))
           (t/is (empty? (set/difference lvalue (:lvalue flwset))))])))}
   [g]
