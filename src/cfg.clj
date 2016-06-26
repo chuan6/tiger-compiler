@@ -39,6 +39,21 @@
 (def ^:private sample-grammars
   [empty-grammar sample-cal test-grammar if-grammar])
 
+(defn prod-len
+  {:test
+   #(let [f (partial prod-len
+                     {:e [[empty-string] [:f] [:e \+ :f]]
+                      :f [[\+]]})]
+      (tt/comprehend-tests
+       (t/is (nil? (f :e 3)))
+       (t/is (nil? (f :f 1)))
+       (t/is (= 1 (f :e 0)))
+       (t/is (= 1 (f :e 1)))
+       (t/is (= 3 (f :e 2)))))}
+  [prod-dict nt x]
+  (when-let [prod (get-in prod-dict [nt x])]
+    (count prod)))
+
 (defn list-grammar-symbols
   {:test
    #(tt/comprehend-tests
@@ -298,7 +313,7 @@
   {:test
    #(let [{pd :productions :as g} test-grammar
           all-valid-items (->> {:left nt :nth x :pos y}
-                           (for [y (range (inc (count ((pd nt) x))))])
+                           (for [y (range (inc (prod-len pd nt x)))])
                            (for [x (range (count (pd nt)))])
                            (for [nt (keys pd)])
                            flatten)
@@ -323,7 +338,7 @@
    #(let [{pd :productions :as g} test-grammar
 
           items-at-the-end-position
-          (->> {:left nt :nth x :pos (count ((pd nt) x))}
+          (->> {:left nt :nth x :pos (prod-len pd nt x)}
                (for [x (range (count (pd nt)))])
                (for [nt (keys pd)])
                flatten)
@@ -342,8 +357,7 @@
        (for [item items-not-at-the-end-position]
          (t/is (not (end-position-lr-item? g item))))))}
   [{pd :productions} {nt :left x :nth y :pos}]
-  (when-let [prod-alt (get-in pd [nt x])]
-    (= (count prod-alt) y)))
+  (= (prod-len pd nt x) y))
 
 ;;expect valid item
 (defn decode-lr-item
@@ -372,40 +386,40 @@
 
 (defn lr-closure
   {:test
-   #(let [{pd :productions :as g}
-          test-grammar
+   #(let [{pd :productions :as g} test-grammar
+          f (partial lr-closure g)
 
           start-item
           {:left (:start g) :nth 0 :pos 0}
 
           items-at-terminal
           (->> item
-               (for [i (range (count ((pd l) n)))
-                     :let [item {:left l :nth n :pos i}
+               (for [y (range (prod-len pd nt x))
+                     :let [item {:left nt :nth x :pos y}
                            decoded (decode-lr-item g item)]
                      :when (terminal? g decoded)])
-               (for [n (range (count (pd l)))])
-               (for [l (keys pd)])
+               (for [x (range (count (pd nt)))])
+               (for [nt (keys pd)])
                flatten)
 
           step-item
           {:left :t :nth 0 :pos 2}]
       (tt/comprehend-tests
-       (t/is (= #{} (lr-closure #{} g)))
+       (t/is (= #{} (f #{})))
        (for [item items-at-terminal]
-         (t/is (= #{item} (lr-closure #{item} g))))
+         (t/is (= #{item} (f #{item}))))
        (t/is (= #{step-item
                   {:left :f :nth 0 :pos 0}
                   {:left :f :nth 1 :pos 0}}
-                (lr-closure #{step-item} g)))
+                (f #{step-item})))
        (t/is (= #{start-item
                   {:left :e, :nth 1, :pos 0}
                   {:left :t, :nth 0, :pos 0}
                   {:left :t, :nth 1, :pos 0}
                   {:left :f, :nth 0, :pos 0}
                   {:left :f, :nth 1, :pos 0}}
-                (lr-closure #{start-item} g)))))}
-  [lr-itemset {pd :productions :as g}]
+                (f #{start-item})))))}
+  [{pd :productions :as g} lr-itemset]
   (assert (every? (partial valid-lr-item? g) lr-itemset)
           (str "failed item set: " lr-itemset " and g: " g))
   (let [decode
@@ -434,37 +448,37 @@
 
 (defn lr-goto
   {:test
-   #(let [{pd :productions :as g}
-          test-grammar
+   #(let [{pd :productions :as g} test-grammar
+          [f h] [(partial lr-goto g) (partial lr-closure g)]
 
           items-at-the-end-position
-          (->> {:left nt :nth x :pos (count ((pd nt) x))}
+          (->> {:left nt :nth x :pos (prod-len pd nt x)}
                (for [x (range (count (pd nt)))])
                (for [nt (keys pd)])
                flatten)
 
           items-not-at-the-end-position
           (->> {:left nt :nth x :pos y}
-               (for [y (range (count ((pd nt) x)))])
+               (for [y (range (prod-len pd nt x))])
                (for [x (range (count (pd nt)))])
                (for [nt (keys pd)])
                flatten)]
       (tt/comprehend-tests
-       (t/is (= #{} (lr-goto #{} :e g)))
+       (t/is (= #{} (f #{} :e)))
        (for [item items-not-at-the-end-position
              :let [sym (decode-lr-item g item)
-                   ret (lr-goto #{item} sym g)]]
-         [(t/is (= (lr-closure ret g) ret))
-          (t/is (= (lr-closure #{(forward-lr-item g item)} g) ret))])
+                   ret (f #{item} sym)]]
+         [(t/is (= (h ret) ret))
+          (t/is (= (h #{(forward-lr-item g item)}) ret))])
        (for [item items-at-the-end-position]
          (for [sym (list-grammar-symbols g)
-               :let [ret (lr-goto g #{item} sym)]]
-           [(t/is (= (lr-closure ret g) ret))
+               :let [ret (f #{item} sym)]]
+           [(t/is (= (h ret) ret))
             (t/is (= #{} ret))]))
        (t/is (= #{{:left :e, :nth 0, :pos 1}
                   {:left :f, :nth 0, :pos 2}}
-                (lr-goto g #{{:left :e :nth 0 :pos 0}
-                             {:left :f :nth 0 :pos 1}} :e)))))}
+                (f #{{:left :e :nth 0 :pos 0}
+                     {:left :f :nth 0 :pos 1}} :e)))))}
   [g lr-itemset x]
   (assert (or (terminal? g x) (nonterminal? g x)))
   (assert (every? (partial valid-lr-item? g) lr-itemset))
@@ -472,7 +486,7 @@
         (->> lr-itemset
              (filter #(= (decode-lr-item g %) x))
              (map (partial forward-lr-item g)))]
-    (lr-closure (set new-kernel-items) g)))
+    (lr-closure g (set new-kernel-items))))
 
 (defn- symbols-in-lr-itemset [g state]
   (->> (map (partial decode-lr-item g) state)
@@ -500,7 +514,7 @@
 
           (update-coll [coll]
             (into coll (filter seq (generate-states coll))))]
-    (fixpoint update-coll #{(lr-closure #{lr-item} g)})))
+    (fixpoint update-coll #{(lr-closure g #{lr-item})})))
 
 (defn indexed-canonical-coll
   "produce two mappings: state->items and items->state, that are consistent,

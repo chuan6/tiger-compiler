@@ -121,65 +121,61 @@
 (defn slr-parser [{:keys [state-items-mappings grammar]
                    :as gobj}]
   (let [{:keys [state->items items->state]} @state-items-mappings
-        productions (:productions @grammar)
+        prod-dict (:productions @grammar)
         init (items->state (->> (keys items->state)
                                 (filter #(contains? % lr-item))
                                 first)) ;the initial state
         action (memoize (partial slr-action gobj least-attempt-resolving))
-        goto (memoize (partial slr-goto gobj))]
-    (letfn [(prod-len [{nt :left x :nth}]
-              (count (get-in productions [nt x])))
-            (default-trans [p cv]
-              (conj [(:left p)] cv))]
-      ;;(println "Initial state:" init ", i.e." (state->items init))
-      (fn parse
-        ([token-v] (parse token-v default-trans))
-        ([token-v trans-fn]
-         (loop [ts (seq (conj token-v {:token end-marker})) ;token queue
-                ss [init] ;state stack
-                treev []
-                twice? false] ;parse tree stack
-           ;(print ss "\t")
-           (if (empty? ts) ;not suppose to happen
-             (do (println ss)  treev)
-             (let [t (first ts)
-                   s (peek ss)
-                   a (action s (:token t))]
-               (case (:action a)
-                 :shift
-                 (do ;(println a)
-                   (recur (rest ts)
-                          (conj ss (:state a))
-                          (conj treev t)
-                          false))
+        goto (memoize (partial slr-goto gobj))
+        default-trans (fn [p cv] (conj [(:left p)] cv))]
+    ;;(println "Initial state:" init ", i.e." (state->items init))
+    (fn parse
+      ([token-v] (parse token-v default-trans))
+      ([token-v trans-fn]
+       (loop [ts (seq (conj token-v {:token end-marker})) ;token queue
+              ss [init] ;state stack
+              treev []
+              twice? false] ;parse tree stack
+                                        ;(print ss "\t")
+         (if (empty? ts) ;not suppose to happen
+           (do (println ss)  treev)
+           (let [t (first ts)
+                 s (peek ss)
+                 a (action s (:token t))]
+             (case (:action a)
+               :shift
+               (do ;(println a)
+                 (recur (rest ts)
+                        (conj ss (:state a))
+                        (conj treev t)
+                        false))
 
-                 :reduce
-                 (let [p (:production a)
-                       m (prod-len p)
-                       nt (:left p)]
-                   (recur ts
-                          (let [n (count ss)
-                                ss' (subvec ss 0 (- n m))
-                                s' (peek ss')]
-                                        ;(println nt ((nt productions) (:nth p)))
-                            (conj ss' (goto s' nt)))
-                          (let [n (count treev)
-                                i (- n m)
-                                cv (subvec treev i n)
-                                treev (subvec treev 0 i)]
-                            (conj treev (trans-fn p cv)))
-                          false))
+               :reduce
+               (let [{nt :left x :nth :as p} (:production a)
+                     m (prod-len prod-dict nt x)]
+                 (recur ts
+                        (let [n (count ss)
+                              ss' (subvec ss 0 (- n m))
+                              s' (peek ss')]
+                                        ;(println nt ((nt prod-dict) x))
+                          (conj ss' (goto s' nt)))
+                        (let [n (count treev)
+                              i (- n m)
+                              cv (subvec treev i n)
+                              treev (subvec treev 0 i)]
+                          (conj treev (trans-fn p cv)))
+                        false))
 
-                 :accept
-                 (do (println "accepted; tokens left:" ts "; stack:" ss)
-                     (treev 0))
+               :accept
+               (do (println "accepted; tokens left:" ts "; stack:" ss)
+                   (treev 0))
 
-                 (if (not twice?)
-                   (recur (conj ts {:token empty-string})
-                          ss
-                          treev
-                          true)
-                   (println "hit nil entry:" t "at" s "tree" treev)))))))))))
+               (if (not twice?)
+                 (recur (conj ts {:token empty-string})
+                        ss
+                        treev
+                        true)
+                 (println "hit nil entry:" t "at" s "tree" treev))))))))))
 
 (tt/comprehend-tests
  (let [[only-in-expected-value
