@@ -537,3 +537,19 @@
         swap-pair (fn [x y] [y x])]
     {:state->items (into {} (map-indexed vector cc-seq))
      :items->state (into {} (map-indexed swap-pair cc-seq))}))
+
+(defn initial-state
+  {:test
+   #(let [gs (map augment-grammar sample-grammars)]
+      (tt/comprehend-tests
+       (for [g gs
+             :let [expected-itemset (lr-closure g #{lr-item})
+                   indexed-cc       (indexed-canonical-coll (canonical-coll g))
+                   state->items     (:state->items indexed-cc)
+                   actual-itemset   (state->items (initial-state indexed-cc))]]
+         [(t/is (= expected-itemset actual-itemset))])))}
+  [{:keys [items->state]}]
+  (->> (keys items->state)
+       (filter #(contains? % lr-item))
+       first
+       items->state))

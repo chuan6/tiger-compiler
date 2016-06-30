@@ -120,17 +120,13 @@
 
 (defn slr-parser [{:keys [state-items-mappings grammar]
                    :as gobj}]
-  (let [{:keys [state->items items->state]} @state-items-mappings
-        prod-dict (:productions @grammar)
-        init (items->state (->> (keys items->state)
-                                (filter #(contains? % lr-item))
-                                first)) ;the initial state
-        action (memoize (partial slr-action gobj least-attempt-resolving))
-        goto (memoize (partial slr-goto gobj))
-        default-trans (fn [p cv] (conj [(:left p)] cv))]
-    ;;(println "Initial state:" init ", i.e." (state->items init))
+  (let [prod-dict (:productions @grammar)
+        init      (initial-state @state-items-mappings) ;the initial state
+        action    (memoize (partial slr-action gobj least-attempt-resolving))
+        goto      (memoize (partial slr-goto gobj))]
     (fn parse
-      ([token-v] (parse token-v default-trans))
+      ([token-v] (parse token-v (fn default-trans [p cv]
+                                  (conj [(:left p)] cv))))
       ([token-v trans-fn]
        (loop [ts (seq (conj token-v {:token end-marker})) ;token queue
               ss [init] ;state stack
