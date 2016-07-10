@@ -118,6 +118,29 @@
        (assoc-in ret [state nt] (slr-goto gobj state nt)))
      {} tab-cells)))
 
+(defn- shift-by-one [action-fn [[tx & rest-tokens] state-stack tree-stack]]
+  (let [ax (action-fn (peek state-stack) (:token tx))]
+    (assert (= (:action ax) :shift))
+    [rest-tokens
+     (conj state-stack (:state ax))
+     (conj tree-stack tx)]))
+
+(defn- reduce-by-one [action-fn goto-fn prod-dict trans-fn [token-seq state-stack tree-stack]]
+  (let [ax (action-fn (peek state-stack) (:token (first token-seq)))]
+    (assert (= (:action ax) :reduce))
+    (let [{nt :left x :nth :as p} (:production ax)
+          m (prod-len prod-dict nt x)]
+      [token-seq
+       (let [n (count state-stack)
+             ss (subvec state-stack 0 (- n m))
+             s (peek ss)]
+         (conj ss (goto-fn s nt)))
+       (let [n (count tree-stack)
+             i (- n m)
+             cv (subvec tree-stack i n)
+             tv (subvec tree-stack 0 i)]
+         (conj tv (trans-fn p cv)))])))
+
 (defn slr-parser [{:keys [state-items-mappings grammar]
                    :as gobj}]
   (let [prod-dict (:productions @grammar)
@@ -128,50 +151,24 @@
       ([token-v] (parse token-v (fn default-trans [p cv]
                                   (conj [(:left p)] cv))))
       ([token-v trans-fn]
-       (loop [ts (seq (conj token-v {:token end-marker})) ;token queue
-              ss [init] ;state stack
-              treev []
-              twice? false] ;parse tree stack
-                                        ;(print ss "\t")
-         (if (empty? ts) ;not suppose to happen
-           (do (println ss)  treev)
-           (let [t (first ts)
-                 s (peek ss)
-                 a (action s (:token t))]
-             (case (:action a)
-               :shift
-               (do ;(println a)
-                 (recur (rest ts)
-                        (conj ss (:state a))
-                        (conj treev t)
-                        false))
-
-               :reduce
-               (let [{nt :left x :nth :as p} (:production a)
-                     m (prod-len prod-dict nt x)]
-                 (recur ts
-                        (let [n (count ss)
-                              ss' (subvec ss 0 (- n m))
-                              s' (peek ss')]
-                                        ;(println nt ((nt prod-dict) x))
-                          (conj ss' (goto s' nt)))
-                        (let [n (count treev)
-                              i (- n m)
-                              cv (subvec treev i n)
-                              treev (subvec treev 0 i)]
-                          (conj treev (trans-fn p cv)))
-                        false))
-
-               :accept
-               (do (println "accepted; tokens left:" ts "; stack:" ss)
-                   (treev 0))
-
-               (if (not twice?)
-                 (recur (conj ts {:token empty-string})
-                        ss
-                        treev
-                        true)
-                 (println "hit nil entry:" t "at" s "tree" treev))))))))))
+       (let [t-end     {:token end-marker}
+             t-empty   {:token empty-string}
+             a-match?  (fn [type [[token] state-stack _]]
+                         (= (:action (action (peek state-stack) (:token token))) type))
+             a-shift?  (partial a-match? :shift)
+             a-reduce? (partial a-match? :reduce)
+             a-shift   (partial shift-by-one action)
+             a-reduce  (partial reduce-by-one action goto prod-dict trans-fn)]
+         (loop [[token-seq state-stack tree-stack :as curr]
+                [(seq (conj token-v t-end)) [init] []]]
+           (let [ax (action (peek state-stack) (:token (first token-seq)))]
+             (case (:action ax)
+               :shift  (recur (first (take 1 (drop-while a-shift?  (iterate a-shift  curr)))))
+               :reduce (recur (first (take 1 (drop-while a-reduce? (iterate a-reduce curr)))))
+               :accept (tree-stack 0)
+               (if (= (first token-seq) t-empty)
+                 (println "hit nil entry:" (second token-seq) "at" (peek state-stack) "tree" tree-stack)
+                 (recur [(conj token-seq t-empty) state-stack tree-stack]))))))))))
 
 (tt/comprehend-tests
  (let [[only-in-expected-value
