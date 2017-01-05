@@ -120,10 +120,10 @@
 
 (defn- shift-by-one [action-fn [[tx & rest-tokens] state-stack tree-stack]]
   (let [ax (action-fn (peek state-stack) (:token tx))]
-    (assert (= (:action ax) :shift))
-    [rest-tokens
-     (conj state-stack (:state ax))
-     (conj tree-stack tx)]))
+    (when (= (:action ax) :shift)
+      [rest-tokens
+       (conj state-stack (:state ax))
+       (conj tree-stack tx)])))
 
 (defn- reduce-by-one [action-fn goto-fn prod-dict trans-fn [token-seq state-stack tree-stack]]
   (let [ax (action-fn (peek state-stack) (:token (first token-seq)))
@@ -131,15 +131,22 @@
               (let [n (count v)
                     i (- n m)]
                 [(subvec v 0 i) (subvec v i n)]))]
-    (assert (= (:action ax) :reduce))
-    (let [{nt :left x :nth :as p} (:production ax)
-          m (prod-len prod-dict nt x)]
-      [token-seq
-       (let [[ss _] (cut state-stack m)
-             s (peek ss)]
-         (conj ss (goto-fn s nt)))
-       (let [[tv cv] (cut tree-stack m)]
-         (conj tv (trans-fn p cv)))])))
+    (when (= (:action ax) :reduce)
+      (let [{nt :left x :nth :as p} (:production ax)
+            m (prod-len prod-dict nt x)]
+        [token-seq
+         (let [[ss _] (cut state-stack m)
+               s (peek ss)]
+           (conj ss (goto-fn s nt)))
+         (let [[tv cv] (cut tree-stack m)]
+           (conj tv (trans-fn p cv)))]))))
+
+(defn- iterate-before-nil [f x]
+  ;; assume that there is a nil in (iterate f x)
+  (reduce
+   (fn [prev curr]
+     (if (nil? curr) (reduced prev) curr))
+   x (iterate f x)))
 
 (defn slr-parser [{:keys [state-items-mappings grammar]
                    :as gobj}]
@@ -148,26 +155,24 @@
         action    (memoize (partial slr-action gobj least-attempt-resolving))
         goto      (memoize (partial slr-goto gobj))
         t-end     {:token end-marker}
-        t-empty   {:token empty-string}
-        a-match?  (fn [type [[token] state-stack _]]
-                    (= (:action (action (peek state-stack) (:token token))) type))
-        a-shift?  (partial a-match? :shift)
-        a-reduce? (partial a-match? :reduce)]
+        t-empty   {:token empty-string}]
     (fn parse
       ([token-v] (parse token-v (fn default-trans [p cv]
                                   (conj [(:left p)] cv))))
       ([token-v trans-fn]
-       (let [a-shift   (partial shift-by-one action)
-             a-reduce  (partial reduce-by-one action goto prod-dict trans-fn)]
+       (let [a-shift  (partial shift-by-one action)
+             a-reduce (partial reduce-by-one action goto prod-dict trans-fn)]
          (loop [[token-seq state-stack tree-stack :as curr]
                 [(seq (conj token-v t-end)) [init] []]]
            (let [ax (action (peek state-stack) (:token (first token-seq)))]
              (case (:action ax)
-               :shift  (recur (first (drop-while a-shift?  (iterate a-shift  curr))))
-               :reduce (recur (first (drop-while a-reduce? (iterate a-reduce curr))))
+               :shift  (recur (iterate-before-nil a-shift curr))
+               :reduce (recur (iterate-before-nil a-reduce curr))
                :accept (tree-stack 0)
                (if (= (first token-seq) t-empty)
-                 (println "hit nil entry:" (second token-seq) "at" (peek state-stack) "tree" tree-stack)
+                 (println "hit nil entry:" (second token-seq)
+                          "at" (peek state-stack)
+                          "tree" tree-stack)
                  (recur [(conj token-seq t-empty) state-stack tree-stack]))))))))))
 
 (tt/comprehend-tests
