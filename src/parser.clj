@@ -126,19 +126,19 @@
      (conj tree-stack tx)]))
 
 (defn- reduce-by-one [action-fn goto-fn prod-dict trans-fn [token-seq state-stack tree-stack]]
-  (let [ax (action-fn (peek state-stack) (:token (first token-seq)))]
+  (let [ax (action-fn (peek state-stack) (:token (first token-seq)))
+        cut (fn [v m]
+              (let [n (count v)
+                    i (- n m)]
+                [(subvec v 0 i) (subvec v i n)]))]
     (assert (= (:action ax) :reduce))
     (let [{nt :left x :nth :as p} (:production ax)
           m (prod-len prod-dict nt x)]
       [token-seq
-       (let [n (count state-stack)
-             ss (subvec state-stack 0 (- n m))
+       (let [[ss _] (cut state-stack m)
              s (peek ss)]
          (conj ss (goto-fn s nt)))
-       (let [n (count tree-stack)
-             i (- n m)
-             cv (subvec tree-stack i n)
-             tv (subvec tree-stack 0 i)]
+       (let [[tv cv] (cut tree-stack m)]
          (conj tv (trans-fn p cv)))])))
 
 (defn slr-parser [{:keys [state-items-mappings grammar]
